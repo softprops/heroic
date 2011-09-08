@@ -12,8 +12,7 @@ object Procfile {
 }
 
 object Script {
-  def apply(main: String, cp: Seq[String],
-            jvmOpts: Seq[String] = Seq("-Xmx256m","-Xss2048k")) =
+  def apply(main: String, cp: Seq[String], jvmOpts: Seq[String]) =
   """#!/bin/sh
   |
   |CLEAR="\033[0m"
