@@ -1,7 +1,6 @@
 package heroic
 
 import sbt._
-import Keys._
 import Project.Initialize
 
 object Procfile {
@@ -60,12 +59,7 @@ object Script {
       )
 }
 
-/** Provides Heroku deployment capability.
- *  assumes exported env variables
- *  REPO path to m2 maven repository */
-object Plugin extends sbt.Plugin {
-  val Hero = config("hero") extend(Runtime)
-
+object Keys {
   // deploy settings
   val prepare = TaskKey[Unit]("prepare", "Prepares project for heroku deployment")
   val procfile = TaskKey[File]("profile", "Writes heroku Procfile to project base directory")
@@ -79,19 +73,34 @@ object Plugin extends sbt.Plugin {
 
   // client settings
   val foreman = TaskKey[Unit]("foreman", "Start herko foreman env")
-  val logs = TaskKey[Int]("logs", "Invokes Heroku client logs command")
+  val logs = InputKey[Int]("logs", "Invokes Heroku client logs command")
   val ps = TaskKey[Unit]("ps", "Invokes Heroku client ps command")
   val create = TaskKey[Int]("create", "Invokes Heroku client create command")
   val push = TaskKey[Int]("push", "Pushes project to heroku")
   val info = TaskKey[Int]("info", "Displays Heroku deployment info")
-  val addons = TaskKey[Int]("addons", "Lists available Heroku addons")
+  val addons = TaskKey[Int]("addons", "Lists installed Heroku addons")
   val addonsAdd = InputKey[Int]("addons-add", "Install a Heroku addon by name")
   val addonsRm = InputKey[Int]("addons-rm", "Uninstall a Heroku addmon by name")
+  val conf = TaskKey[Int]("conf", "Lists available remote Heroku config properties")
+  val confAdd = InputKey[Int]("conf-add", "Adds a Heroku config property")
+  val confRm = InputKey[Int]("conf-rm", "Removes a Heroku config property")
+}
+
+/** Provides Heroku deployment capability.
+ *  assumes exported env variables
+ *  REPO path to m2 maven repository */
+object Plugin extends sbt.Plugin {
+  import sbt.Keys._
+  import heroic.Keys._
+
+  val Hero = config("hero") extend(Runtime)
 
   def deploySettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
     (pomPostProcess in Global) <<= (pomPostProcess in Global, baseDirectory,
                                     sourceDirectory, scalaVersion)(
-       (pp, base, src, sv) => pp andThen(includingMvnPlugin(Path.relativeTo(base)(src).get, sv))
+       (pp, base, src, sv) => pp.andThen(
+         includingMvnPlugin(Path.relativeTo(base)(src).get, sv)
+       )
     ),
     jvmOpts := Seq("-Xmx256m","-Xss2048k"),
     main <<= (mainClass in Runtime).identity,
@@ -104,16 +113,39 @@ object Plugin extends sbt.Plugin {
     checkDependencies <<= checkDependenciesTask
   ))
 
-  // todo
-  // h scale x=n
-  // h config:add KEY=value
   def clientSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
     foreman <<= foremanTask,
-    logs <<= logsTask,
+    logs <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        val p =
+          args match {
+            case Seq() => Heroku.logs.show
+            case Seq("-t") => Heroku.logs.tail
+          }
+        p ! out.log
+      }
+    },
     ps <<= psTask,
     create <<= createTask,
     push <<= pushTask,
     info <<= infoTask,
+    conf <<= confTask,
+    confAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq(key, value) =>
+            Heroku.config.add(key, value) ! out.log
+        }
+      }
+    },
+    confRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq(key) =>
+            Heroku.config.rm(key) ! out.log
+        }
+      }
+    },
     addons <<= addonsTask,
     addonsAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
@@ -138,12 +170,6 @@ object Plugin extends sbt.Plugin {
         if(chk == 0) Foreman.start ! out.log
     }
 
-  private def logsTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        Heroku.logs() ! out.log
-    }
-
   private def psTask: Initialize[Task[Unit]] =
     (streams) map {
       (out) =>
@@ -160,6 +186,12 @@ object Plugin extends sbt.Plugin {
     (streams) map {
       (out) =>
         Heroku.addons.ls ! out.log
+    }
+
+  private def confTask: Initialize[Task[Int]] =
+    (streams) map {
+      (out) =>
+        Heroku.config.show ! out.log
     }
 
   // note you can pass --remote name to overrivde
