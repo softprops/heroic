@@ -49,7 +49,7 @@ object Script {
   |CLASSPATH=%s
   |
   |info "Booting application (%s)"
-  |exec $JAVA %s -classpath "$CLASSPATH" %s "$@"
+  |exec $JAVA "$JAVA_OPTS" %s -classpath "$CLASSPATH" %s "$@"
   |""".stripMargin
       .format(
         cp.map(""""$REPO"/%s""" format _).mkString(":"),
@@ -60,7 +60,7 @@ object Script {
 }
 
 object Keys {
-  // deploy settings
+  // pgk settings
   val prepare = TaskKey[Unit]("prepare", "Prepares project for heroku deployment")
   val procfile = TaskKey[File]("profile", "Writes heroku Procfile to project base directory")
   val main = TaskKey[Option[String]]("main", "Target Main class to run")
@@ -84,6 +84,14 @@ object Keys {
   val conf = TaskKey[Int]("conf", "Lists available remote Heroku config properties")
   val confAdd = InputKey[Int]("conf-add", "Adds a Heroku config property")
   val confRm = InputKey[Int]("conf-rm", "Removes a Heroku config property")
+  val maintenanceOff = TaskKey[Int]("maint-off", "Turns on Heroku Maintenance mode")
+  val maintenanceOn = TaskKey[Int]("maint-on", "Turns off Heroku Maintenance mode")
+  val releases = TaskKey[Int]("releases", "Lists all releases")
+  val releaseInfo = InputKey[Int]("release-info", "Shows info about a target release")
+  val rollback = InputKey[Int]("rollback", "Rolls back to a target release")
+  val destroy = TaskKey[Int]("destroy", "Zaps app from Heroku")
+  val open = TaskKey[Int]("open", "Opens App in a browser")
+  val rename = InputKey[Int]("rename", "Give your app a custom subdomain on heroku")
 }
 
 /** Provides Heroku deployment capability.
@@ -95,7 +103,7 @@ object Plugin extends sbt.Plugin {
 
   val Hero = config("hero") extend(Runtime)
 
-  def deploySettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
+  def pkgSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
     (pomPostProcess in Global) <<= (pomPostProcess in Global, baseDirectory,
                                     sourceDirectory, scalaVersion)(
        (pp, base, src, sv) => pp.andThen(
@@ -120,6 +128,7 @@ object Plugin extends sbt.Plugin {
         val p =
           args match {
             case Seq() => Heroku.logs.show
+            // tailing does seem to work in sbt, might take this out
             case Seq("-t") => Heroku.logs.tail
           }
         p ! out.log
@@ -160,8 +169,68 @@ object Plugin extends sbt.Plugin {
           case Seq(feature) => Heroku.addons.rm(feature) ! out.log
         }
       }
+    },
+    maintenanceOn <<= maintenanceOnTask,
+    maintenanceOff <<= maintenanceOffTask,
+    releases <<= releasesTask,
+    releaseInfo <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq(rel) =>
+            Heroku.releases.info(rel) ! out.log
+        }
+      }
+    },
+    rollback <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq(to) =>
+            Heroku.releases.rollback(to) ! out.log
+        }
+      }
+    },
+    //destroy <<= destroyTask,
+    open <<= openTask,
+    rename <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq(to) =>
+            Heroku.apps.rename(to) ! out.log
+        }
+      }
     }
   ))
+
+  /* todo figure out how to prompt in sbt. are 'ya sure? */
+  /*private def destroyTask: Initialize[Task[Int]] =
+    (streams) map {
+      (out) =>
+        Heroku.apps.destroy ! out.log
+    }*/
+
+  private def openTask: Initialize[Task[Int]] =
+    (streams) map {
+      (out) =>
+        Heroku.apps.open ! out.log
+    }
+
+  private def releasesTask: Initialize[Task[Int]] =
+    (streams) map {
+      (out) =>
+        Heroku.releases.show ! out.log
+    }
+
+  private def maintenanceOnTask: Initialize[Task[Int]] =
+    (streams) map {
+      (out) =>
+        Heroku.maintenance.on ! out.log
+    }
+
+  private def maintenanceOffTask: Initialize[Task[Int]] =
+    (streams) map {
+      (out) =>
+        Heroku.maintenance.off ! out.log
+    }
 
   private def foremanTask: Initialize[Task[Unit]] =
     (streams) map {
@@ -173,7 +242,7 @@ object Plugin extends sbt.Plugin {
   private def psTask: Initialize[Task[Unit]] =
     (streams) map {
       (out) =>
-        Heroku.ps ! out.log
+        Heroku.ps.show ! out.log
     }
 
   private def infoTask: Initialize[Task[Int]] =
@@ -227,9 +296,10 @@ object Plugin extends sbt.Plugin {
         pf
     }
 
-  // http://devcenter.heroku.com/articles/slug-compiler
-  // the docs say to ignore everything that isn't required to run an
-  // application, if we are depending on poms this may mean src
+  /* http://devcenter.heroku.com/articles/slug-compiler
+   the docs say to ignore everything that isn't required to run an
+   application, if we are depending on poms this may mean src
+   ignore tests by default */
   private def slugIgnoreTask: Initialize[Task[File]] =
     (baseDirectory, streams) map {
       (base, out) =>
@@ -371,5 +441,5 @@ object Plugin extends sbt.Plugin {
     new RuleTransformer(AddBuild,EnsureEncoding)(pom)
   }
 
-  val options: Seq[Setting[_]] = deploySettings ++ clientSettings
+  val options: Seq[Setting[_]] = pkgSettings ++ clientSettings
 }
