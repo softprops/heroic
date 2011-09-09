@@ -84,8 +84,8 @@ object Heroku extends Cmd("heroku", "try `gem install heroku`") {
 
   def domains = new {
     def show = call("domains")
-    def add(dom: String) = call("domains.add %s" format dom)
-    def rm(dom: String) = call("domains.remove %s" format dom)
+    def add(dom: String) = call("domains:add %s" format dom)
+    def rm(dom: String) = call("domains:remove %s" format dom)
   }
 
   def maintenance = new {
