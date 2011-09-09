@@ -35,6 +35,9 @@ object Keys {
   val rollback = InputKey[Int]("rollback", "Rolls back to a target release")
   val open = TaskKey[Int]("open", "Opens App in a browser")
   val rename = InputKey[Int]("rename", "Give your app a custom subdomain on heroku")
+  val domains = TaskKey[Int]("domains", "List domains")
+  val domainsAdd = InputKey[Int]("domains-add", "Add a Heroku domain")
+  val domainsRm = InputKey[Int]("domains-rm", "Removes a Heroku domain")
 }
 
 /** Provides Heroku deployment capability.
@@ -140,6 +143,23 @@ object Plugin extends sbt.Plugin {
             Heroku.apps.rename(to) ! out.log
         }
       }
+    },
+    domains <<= domainsTask,
+    domainsAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq(dom) =>
+            Heroku.domains.add(dom) ! out.log
+        }
+      }
+    },
+    domainsRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq(dom) =>
+            Heroku.domains.rm(dom) ! out.log
+        }
+      }
     }
   ))
 
@@ -148,6 +168,10 @@ object Plugin extends sbt.Plugin {
       (out) =>
         pb ! out.log
     }
+
+
+  private def domainsTask: Initialize[Task[Int]] =
+    exec(Heroku.domains.show)
 
   private def openTask: Initialize[Task[Int]] =
     exec(Heroku.apps.open)
@@ -176,7 +200,7 @@ object Plugin extends sbt.Plugin {
     exec(Heroku.info)
 
   private def addonsTask: Initialize[Task[Int]] =
-    exec(Heroku.addons.ls)
+    exec(Heroku.addons.show)
 
   private def confTask: Initialize[Task[Int]] =
     exec(Heroku.config.show)

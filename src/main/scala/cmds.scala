@@ -31,7 +31,7 @@ object Git extends Cmd("git", "download from http://git-scm.com/download") {
 object Heroku extends Cmd("heroku", "try `gem install heroku`") {
   def addons = new {
     def add(addon: String) = call("addons:add %s" format addon)
-    def ls = call("addons")
+    def show = call("addons")
     def rm(addon: String) = call("addons:remove %s" format addon)
   }
 
