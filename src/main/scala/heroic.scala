@@ -16,9 +16,9 @@ object Keys {
   val slugIgnore = TaskKey[File]("slug-ignore", "Generates a Heroku .slugignore file in the base directory")
 
   // client settings
-  val foreman = TaskKey[Unit]("foreman", "Start herko foreman env")
+  val foreman = TaskKey[Int]("foreman", "Start herko foreman env")
   val logs = InputKey[Int]("logs", "Invokes Heroku client logs command")
-  val ps = TaskKey[Unit]("ps", "Invokes Heroku client ps command")
+  val ps = TaskKey[Int]("ps", "Invokes Heroku client ps command")
   val create = TaskKey[Int]("create", "Invokes Heroku client create command")
   val push = TaskKey[Int]("push", "Pushes project to heroku")
   val info = TaskKey[Int]("info", "Displays Heroku deployment info")
@@ -143,75 +143,52 @@ object Plugin extends sbt.Plugin {
     }
   ))
 
-  private def openTask: Initialize[Task[Int]] =
+  private def exec(pb: ProcessBuilder): Initialize[Task[Int]] =
     (streams) map {
       (out) =>
-        Heroku.apps.open ! out.log
+        pb ! out.log
     }
+
+  private def openTask: Initialize[Task[Int]] =
+    exec(Heroku.apps.open)
 
   private def releasesTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        Heroku.releases.show ! out.log
-    }
+    exec(Heroku.releases.show)
 
   private def maintenanceOnTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        Heroku.maintenance.on ! out.log
-    }
+    exec(Heroku.maintenance.on)
 
   private def maintenanceOffTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        Heroku.maintenance.off ! out.log
-    }
+    exec(Heroku.maintenance.off)
 
-  private def foremanTask: Initialize[Task[Unit]] =
+  private def foremanTask: Initialize[Task[Int]] =
     (streams) map {
       (out) =>
         val chk = Foreman.check ! out.log
         if(chk == 0) Foreman.start ! out.log
+        else chk
     }
 
-  private def psTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        Heroku.ps.show ! out.log
-    }
+  private def psTask: Initialize[Task[Int]] =
+    exec(Heroku.ps.show)
 
   private def infoTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        Heroku.info ! out.log
-    }
+    exec(Heroku.info)
 
   private def addonsTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        Heroku.addons.ls ! out.log
-    }
+    exec(Heroku.addons.ls)
 
   private def confTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        Heroku.config.show ! out.log
-    }
+    exec(Heroku.config.show)
 
   // note you can pass --remote name to overrivde
   // heroku's default remote name for multiple envs
   // stanging, production, ect
   private def createTask: Initialize[Task[Int]] =
-   (streams) map {
-     (out) =>
-       Heroku.create ! out.log
-   }
+   exec(Heroku.create)
 
   private def pushTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        Git.push("heroku") ! out.log
-    }
+    exec(Git.push("heroku"))
 
   private def procfileTask: Initialize[Task[File]] =
     (baseDirectory, scriptName, streams) map {
