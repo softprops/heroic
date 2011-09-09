@@ -33,7 +33,6 @@ object Keys {
   val releases = TaskKey[Int]("releases", "Lists all releases")
   val releaseInfo = InputKey[Int]("release-info", "Shows info about a target release")
   val rollback = InputKey[Int]("rollback", "Rolls back to a target release")
-  val destroy = TaskKey[Int]("destroy", "Zaps app from Heroku")
   val open = TaskKey[Int]("open", "Opens App in a browser")
   val rename = InputKey[Int]("rename", "Give your app a custom subdomain on heroku")
 }
@@ -133,7 +132,6 @@ object Plugin extends sbt.Plugin {
         }
       }
     },
-    //destroy <<= destroyTask,
     open <<= openTask,
     rename <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
@@ -144,13 +142,6 @@ object Plugin extends sbt.Plugin {
       }
     }
   ))
-
-  /* todo figure out how to prompt in sbt. are 'ya sure? */
-  /*private def destroyTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        Heroku.apps.destroy ! out.log
-    }*/
 
   private def openTask: Initialize[Task[Int]] =
     (streams) map {
