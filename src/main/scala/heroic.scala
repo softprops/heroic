@@ -13,6 +13,7 @@ object Keys {
   val scriptName = SettingKey[String]("script-name", "Name of the generated driver script")
   val jvmOpts = SettingKey[Seq[String]]("jvm-opts", """Sequence of jvm options, defaults to Seq("-Xmx256m","-Xss2048k")""")
   val pom = TaskKey[File]("pom", "Generates and copies project pom to project base")
+  val slugIgnored = SettingKey[Seq[String]]("slug-ignored", "List of items to ignore when transfering application")
   val slugIgnore = TaskKey[File]("slug-ignore", "Generates a Heroku .slugignore file in the base directory")
 
   // client settings
@@ -35,9 +36,15 @@ object Keys {
   val rollback = InputKey[Int]("rollback", "Rolls back to a target release")
   val open = TaskKey[Int]("open", "Opens App in a browser")
   val rename = InputKey[Int]("rename", "Give your app a custom subdomain on heroku")
-  val domains = TaskKey[Int]("domains", "List domains")
+  val domains = TaskKey[Int]("domains", "List Heroku domains")
   val domainsAdd = InputKey[Int]("domains-add", "Add a Heroku domain")
   val domainsRm = InputKey[Int]("domains-rm", "Removes a Heroku domain")
+
+  // git (maybe make a new config for this?)
+  val diff = TaskKey[Int]("git-diff", "Displays a diff of untracked sources")
+  val status = TaskKey[Int]("git-status", "Display the status of your git staging area")
+  val commit = InputKey[Int]("git-commit", "Commits a staging area with an optional msg")
+  val add = InputKey[Int]("git-add", "Adds an optional list of paths to the git index, defaults to '.'")
 }
 
 /** Provides Heroku deployment capability.
@@ -62,6 +69,7 @@ object Plugin extends sbt.Plugin {
     script <<= scriptTask,
     procfile <<= procfileTask,
     pom <<= pomTask,
+    slugIgnored := Seq("project", "src/test", "target"),
     slugIgnore <<= slugIgnoreTask,
     prepare <<= Seq(script, procfile, pom, slugIgnore).dependOn,
     checkDependencies <<= checkDependenciesTask
@@ -89,6 +97,7 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(key, value) =>
+            out.log.info("assigning config var %s" format key)
             Heroku.config.add(key, value) ! out.log
         }
       }
@@ -97,6 +106,7 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(key) =>
+            out.log.info("removing config var %s" format key)
             Heroku.config.rm(key) ! out.log
         }
       }
@@ -105,14 +115,18 @@ object Plugin extends sbt.Plugin {
     addonsAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         args match {
-          case Seq(feature) => Heroku.addons.add(feature) ! out.log
+          case Seq(feature) =>
+            out.log.info("requesting addon")
+            Heroku.addons.add(feature) ! out.log
         }
       }
     },
     addonsRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         args match {
-          case Seq(feature) => Heroku.addons.rm(feature) ! out.log
+          case Seq(feature) =>
+            out.log.info("Requesting addon removal")
+            Heroku.addons.rm(feature) ! out.log
         }
       }
     },
@@ -123,6 +137,7 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(rel) =>
+            out.log.info("Fetching release listing")
             Heroku.releases.info(rel) ! out.log
         }
       }
@@ -131,6 +146,7 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(to) =>
+            out.log.info("Rolling back release")
             Heroku.releases.rollback(to) ! out.log
         }
       }
@@ -140,6 +156,7 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(to) =>
+            out.log.info("Requesting subdomain")
             Heroku.apps.rename(to) ! out.log
         }
       }
@@ -149,6 +166,7 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(dom) =>
+            out.log.info("Adding domain %s" format dom)
             Heroku.domains.add(dom) ! out.log
         }
       }
@@ -157,62 +175,103 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(dom) =>
+            out.log.info("Removing domain %s" format dom)
             Heroku.domains.rm(dom) ! out.log
+        }
+      }
+    },
+    diff <<= diffTask,
+    status <<= statusTask,
+    commit <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case msg =>
+            out.log.info("commiting with msg '%s'" format msg.mkString(" "))
+            Git.commit(msg.mkString(" ")) ! out.log
+        }
+      }
+    },
+    add <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq() =>
+            out.log.info("add everything")
+            Git.add() ! out.log
+          case paths =>
+            out.log.info("adding paths %s" format paths.mkString(" "))
+            Git.add(paths) ! out.log
         }
       }
     }
   ))
 
-  private def exec(pb: ProcessBuilder): Initialize[Task[Int]] =
+
+  private def statusTask: Initialize[Task[Int]] =
     (streams) map {
       (out) =>
+        // todo: parse output, and render nicely
+        Git.status() ! out.log
+    }
+
+  private def diffTask: Initialize[Task[Int]] =
+    (streams) map {
+      (out) =>
+        Git.diff() ! out.log
+    }
+
+  private def exec(pb: ProcessBuilder, msg: String = ""): Initialize[Task[Int]] =
+    (streams) map {
+      (out) =>
+        if(!msg.isEmpty) out.log.info(msg)
         pb ! out.log
     }
 
-
   private def domainsTask: Initialize[Task[Int]] =
-    exec(Heroku.domains.show)
+    exec(Heroku.domains.show, "Fetching domains")
 
   private def openTask: Initialize[Task[Int]] =
-    exec(Heroku.apps.open)
+    exec(Heroku.apps.open, "Launching application")
 
   private def releasesTask: Initialize[Task[Int]] =
-    exec(Heroku.releases.show)
+    exec(Heroku.releases.show, "Fetching release listing")
 
   private def maintenanceOnTask: Initialize[Task[Int]] =
-    exec(Heroku.maintenance.on)
+    exec(Heroku.maintenance.on, "Enabling maintenance mode")
 
   private def maintenanceOffTask: Initialize[Task[Int]] =
-    exec(Heroku.maintenance.off)
+    exec(Heroku.maintenance.off, "Disabling maintenance mode")
 
   private def foremanTask: Initialize[Task[Int]] =
     (streams) map {
       (out) =>
         val chk = Foreman.check ! out.log
-        if(chk == 0) Foreman.start ! out.log
+        if(chk == 0) {
+          out.log.info("Starting foreman")
+          Foreman.start ! out.log
+        }
         else chk
     }
 
   private def psTask: Initialize[Task[Int]] =
-    exec(Heroku.ps.show)
+    exec(Heroku.ps.show, "Fetching process info")
 
   private def infoTask: Initialize[Task[Int]] =
-    exec(Heroku.info)
+    exec(Heroku.info, "Fetching application info")
 
   private def addonsTask: Initialize[Task[Int]] =
-    exec(Heroku.addons.show)
+    exec(Heroku.addons.show, "Fetching addons")
 
   private def confTask: Initialize[Task[Int]] =
-    exec(Heroku.config.show)
+    exec(Heroku.config.show, "Fetching application configuration")
 
   // note you can pass --remote name to overrivde
   // heroku's default remote name for multiple envs
   // stanging, production, ect
   private def createTask: Initialize[Task[Int]] =
-   exec(Heroku.create)
+   exec(Heroku.create, "Creating application")
 
   private def pushTask: Initialize[Task[Int]] =
-    exec(Git.push("heroku"))
+    exec(Git.push("heroku"), "Updating application")
 
   private def procfileTask: Initialize[Task[File]] =
     (baseDirectory, scriptName, streams) map {
@@ -233,17 +292,17 @@ object Plugin extends sbt.Plugin {
     }
 
   /* http://devcenter.heroku.com/articles/slug-compiler
+     http://devcenter.heroku.com/articles/slug-size
    the docs say to ignore everything that isn't required to run an
-   application, if we are depending on poms this may mean src
-   ignore tests by default */
+   application.  */
   private def slugIgnoreTask: Initialize[Task[File]] =
-    (baseDirectory, streams) map {
-      (base, out) =>
+    (baseDirectory, slugIgnored, streams) map {
+      (base, ignores, out) =>
         val f = new java.io.File(base, ".slugignore")
         if (!f.exists) {
           f.createNewFile
-          IO.write(f, "src/test")
         }
+        IO.write(f, ignores.mkString("\n"))
         f
     }
 
@@ -268,12 +327,15 @@ object Plugin extends sbt.Plugin {
 
   private def scriptTask: Initialize[Task[File]] =
     (main, streams, scalaVersion, fullClasspath in Runtime, baseDirectory,
-     moduleSettings, scriptName, jvmOpts) map {
-      (main, out, sv, cp, base, mod, scriptName, jvmOpts) => main match {
+     moduleSettings, scriptName, jvmOpts, scalaInstance) map {
+      (main, out, sv, cp, base, mod, scriptName, jvmOpts, si) => main match {
         case Some(mainCls) =>
 
           val IvyCachedParts = """(.*[.]ivy2/cache)/(\S+)/(\S+)/(\S+)/(\S+)[.]jar""".r
           val IvyCached = """(.*[.]ivy2/cache/\S+/\S+/\S+/\S+[.]jar)""".r
+          val ScalaStdLib = """.*/boot/scala-(\S+)/lib/scala-library.jar""".r
+          val TargetClasses = """.*/target/scala-(\S+)/classes""".r
+          val MvnScalaStdLib = """org/scala-lang/scala-library/%s/scala-library-%s.jar"""
 
           def mvnize(ivy: String) = ivy match {
              case IvyCachedParts(_, org, name, pkging, artifact) =>
@@ -286,26 +348,30 @@ object Plugin extends sbt.Plugin {
              case notInIvy => error("not supported %s" format notInIvy)
           }
 
-          // Hope for a moduleSetting that provides a moduleId
-          // https://github.com/harrah/xsbt/blob/0.10/ivy/IvyConfigurations.scala#L51-73
+          /* Hope for a moduleSetting that provides a moduleId
+            https://github.com/harrah/xsbt/blob/0.10/ivy/IvyConfigurations.scala#L51-73 */
           val mid = mod match {
             case InlineConfiguration(id, _, _, _, _, _, _) => id
             case EmptyConfiguration(id, _, _) => id
             case _ => error("This task requires a module id")
           }
 
-          // https://github.com/harrah/xsbt/blob/0.10/ivy/IvyInterface.scala#L12
+          /* https://github.com/harrah/xsbt/blob/0.10/ivy/IvyInterface.scala#L12 */
           val (org, name, version) = (mid.organization, mid.name, mid.revision)
-
+          val projectJar = "%s/%s_%s/%s/%s_%s-%s.jar".format(
+            org.replaceAll("[.]","/"),
+            name, sv, version, name, sv, version
+          )
           val cpElems = cp.map(_.data.getPath).flatMap({
-               case IvyCached(jar) => Some(mvnize(jar))
-               case r => out.log.info("possibly leaving out cp resource %s." format r); None
+              case IvyCached(jar) => Some(mvnize(jar))
+              case ScalaStdLib(vers) if(vers == sv) => None
+              case TargetClasses(scvers) if(scvers == si.actualVersion) => None
+              case r =>
+                out.log.info("possibly leaving out cp resource %s." format r)
+                None
             }) ++ Seq(
-              "org/scala-lang/scala-library/%s/scala-library-%s.jar".format(sv, sv),
-              "%s/%s_%s/%s/%s_%s-%s.jar".format(
-                org.replaceAll("[.]","/"),
-                name, sv, version, name, sv, version
-              )
+              MvnScalaStdLib.format(sv, sv),
+              projectJar
             )
 
           cpElems.foreach(e => out.log.debug("incl %s" format e))
