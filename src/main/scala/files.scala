@@ -46,7 +46,7 @@ object Script {
   |CLASSPATH=%s
   |
   |info "Booting application (%s)"
-  |exec $JAVA "$JAVA_OPTS" %s -classpath "$CLASSPATH" %s "$@"
+  |exec $JAVA %s -classpath "$CLASSPATH" %s "$@"
   |""".stripMargin
       .format(
         cp.map(""""$REPO"/%s""" format _).mkString(":"),
