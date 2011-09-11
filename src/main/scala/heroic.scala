@@ -5,8 +5,8 @@ import Project.Initialize
 
 object Keys {
   // pgk settings
-  val prepare = TaskKey[Unit]("prepare", "Prepares project for heroku deployment")
-  val procfile = TaskKey[File]("profile", "Writes heroku Procfile to project base directory")
+  val prepare = TaskKey[Unit]("prepare", "Prepares project for Heroku deployment")
+  val procfile = TaskKey[File]("profile", "Writes Heroku Procfile to project base directory")
   val main = TaskKey[Option[String]]("main", "Target Main class to run")
   val script = TaskKey[File]("script", "Generates driver script")
   val checkDependencies = TaskKey[Boolean]("check-dependencies", "Checks to see if required dependencies are installed")
@@ -17,15 +17,17 @@ object Keys {
   val slugIgnore = TaskKey[File]("slug-ignore", "Generates a Heroku .slugignore file in the base directory")
 
   // client settings
-  val foreman = TaskKey[Int]("foreman", "Start herko foreman env")
+  val foreman = TaskKey[Int]("foreman", "Start Heroku foreman env")
   val logs = InputKey[Int]("logs", "Invokes Heroku client logs command")
   val ps = TaskKey[Int]("ps", "Invokes Heroku client ps command")
   val create = TaskKey[Int]("create", "Invokes Heroku client create command")
-  val push = TaskKey[Int]("push", "Pushes project to heroku")
+  val push = TaskKey[Int]("push", "Pushes project to Heroku")
   val info = TaskKey[Int]("info", "Displays Heroku deployment info")
   val addons = TaskKey[Int]("addons", "Lists installed Heroku addons")
   val addonsAdd = InputKey[Int]("addons-add", "Install a Heroku addon by name")
-  val addonsRm = InputKey[Int]("addons-rm", "Uninstall a Heroku addmon by name")
+  val addonsRm = InputKey[Int]("addons-rm", "Uninstall a Heroku addon by name")
+  // upgrade requires user stdin, not sure how to handle this yet
+  //val addonsUpgrade = InputKey[Int]("addons-upgrade", "Upgrade an installed Heroku addon")
   val conf = TaskKey[Int]("conf", "Lists available remote Heroku config properties")
   val confAdd = InputKey[Int]("conf-add", "Adds a Heroku config property")
   val confRm = InputKey[Int]("conf-rm", "Removes a Heroku config property")
@@ -40,11 +42,12 @@ object Keys {
   val domainsAdd = InputKey[Int]("domains-add", "Add a Heroku domain")
   val domainsRm = InputKey[Int]("domains-rm", "Removes a Heroku domain")
 
-  // git (maybe make a new config for this?)
+  // git settings
   val diff = TaskKey[Int]("git-diff", "Displays a diff of untracked sources")
   val status = TaskKey[Int]("git-status", "Display the status of your git staging area")
   val commit = InputKey[Int]("git-commit", "Commits a staging area with an optional msg")
   val add = InputKey[Int]("git-add", "Adds an optional list of paths to the git index, defaults to '.'")
+  val git = InputKey[Int]("exec", "Executes arbitrary git command")
 }
 
 /** Provides Heroku deployment capability.
@@ -53,8 +56,41 @@ object Keys {
 object Plugin extends sbt.Plugin {
   import sbt.Keys._
   import heroic.Keys._
+  import heroic.{Git => GitCli}
 
   val Hero = config("hero") extend(Runtime)
+  val Git = config("git") extend(Runtime)
+
+  def gitSettings: Seq[Setting[_]] = inConfig(Git)(Seq(
+    diff <<= diffTask,
+    status <<= statusTask,
+    commit <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case msg =>
+            out.log.info("commiting with msg '%s'" format msg.mkString(" "))
+            GitCli.commit(msg.mkString(" ")) ! out.log
+        }
+      }
+    },
+    add <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq() =>
+            out.log.info("add everything")
+            GitCli.add() ! out.log
+          case paths =>
+            out.log.info("adding paths %s" format paths.mkString(" "))
+            GitCli.add(paths) ! out.log
+        }
+      }
+    },
+    git <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        GitCli(args) ! out.log
+      }
+    }
+  ))
 
   def pkgSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
     (pomPostProcess in Global) <<= (pomPostProcess in Global, baseDirectory,
@@ -130,6 +166,15 @@ object Plugin extends sbt.Plugin {
         }
       }
     },
+    /*addonsUpgrade <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq(feature) =>
+            out.log.info("Requesting addon upgrade")
+            Heroku.addons.upgrade(feature) ! out.log
+        }
+      }
+    }, */
     maintenanceOn <<= maintenanceOnTask,
     maintenanceOff <<= maintenanceOffTask,
     releases <<= releasesTask,
@@ -179,29 +224,6 @@ object Plugin extends sbt.Plugin {
             Heroku.domains.rm(dom) ! out.log
         }
       }
-    },
-    diff <<= diffTask,
-    status <<= statusTask,
-    commit <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
-      (argsTask, streams) map { (args, out) =>
-        args match {
-          case msg =>
-            out.log.info("commiting with msg '%s'" format msg.mkString(" "))
-            Git.commit(msg.mkString(" ")) ! out.log
-        }
-      }
-    },
-    add <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
-      (argsTask, streams) map { (args, out) =>
-        args match {
-          case Seq() =>
-            out.log.info("add everything")
-            Git.add() ! out.log
-          case paths =>
-            out.log.info("adding paths %s" format paths.mkString(" "))
-            Git.add(paths) ! out.log
-        }
-      }
     }
   ))
 
@@ -210,20 +232,22 @@ object Plugin extends sbt.Plugin {
     (streams) map {
       (out) =>
         // todo: parse output, and render nicely
-        Git.status() ! out.log
+        GitCli.status() ! out.log
     }
 
   private def diffTask: Initialize[Task[Int]] =
     (streams) map {
       (out) =>
-        Git.diff() ! out.log
+        GitCli.diff() ! out.log
     }
 
-  private def exec(pb: ProcessBuilder, msg: String = ""): Initialize[Task[Int]] =
+  private def exec(pb: ProcessBuilder, msg: String = "", onSuccess: String = ""): Initialize[Task[Int]] =
     (streams) map {
       (out) =>
         if(!msg.isEmpty) out.log.info(msg)
-        pb ! out.log
+        val stat = pb ! out.log
+        if(stat == 0 && !onSuccess.isEmpty) out.log.info(onSuccess)
+        stat
     }
 
   private def domainsTask: Initialize[Task[Int]] =
@@ -268,10 +292,12 @@ object Plugin extends sbt.Plugin {
   // heroku's default remote name for multiple envs
   // stanging, production, ect
   private def createTask: Initialize[Task[Int]] =
-   exec(Heroku.create, "Creating application")
+    exec(Heroku.create, "Creating application")
 
   private def pushTask: Initialize[Task[Int]] =
-    exec(Git.push("heroku"), "Updating application")
+    exec(GitCli.push("heroku"), "Updating application (this may take a few seconds)",
+         "Check the status of your application with `hero:ps` or `hero:logs`"
+    )
 
   private def procfileTask: Initialize[Task[File]] =
     (baseDirectory, scriptName, streams) map {
@@ -377,7 +403,7 @@ object Plugin extends sbt.Plugin {
           cpElems.foreach(e => out.log.debug("incl %s" format e))
           val scriptBody = Script(mainCls, cpElems, jvmOpts)
 
-          out.log.info("Writing script/%s" format scriptName)
+          out.log.info("Writing process runner, script/%s" format scriptName)
           val sf = new java.io.File(base, "script/%s" format scriptName)
           IO.write(sf, scriptBody)
           sf
@@ -440,8 +466,8 @@ object Plugin extends sbt.Plugin {
     // todo: my test build was sparse
     // handling of other cases would make this
     // much more robust :)
-    new RuleTransformer(AddBuild,EnsureEncoding)(pom)
+    new RuleTransformer(AddBuild, EnsureEncoding)(pom)
   }
 
-  val options: Seq[Setting[_]] = pkgSettings ++ clientSettings
+  val options: Seq[Setting[_]] = pkgSettings ++ clientSettings ++ gitSettings
 }

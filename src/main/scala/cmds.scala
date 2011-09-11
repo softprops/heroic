@@ -24,13 +24,12 @@ case class Cmd(name: String, help: String) {
 }
 
 object Git extends Cmd("git", "download from http://git-scm.com/download") {
+  def apply(args: Seq[String]) =
+    call(args.mkString(" "))
   def add(paths: Seq[String] = Seq(".")) =
     call("add %s" format paths.mkString(" "))
-  def commit(msg: String) = {
-    val c = """commit -m '%s'""" format msg
-    println(c)
-    call(c)
-  }
+  def commit(msg: String) =
+    call( """commit -m '%s'""" format msg)
   def diff(path: String = "") =
     call("diff %s" format path)
   def push(remote: String, branch: String = "master") =
@@ -46,6 +45,8 @@ object Heroku extends Cmd("heroku", "try `gem install heroku`") {
     def show = call("addons")
     def rm(addon: String) =
       call("addons:remove %s" format addon)
+    def upgrade(addon: String) =
+      call("addons:upgrade %s" format addon)
   }
 
   /* more info @ http://devcenter.heroku.com/articles/multiple-environments */
