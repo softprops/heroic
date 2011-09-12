@@ -120,7 +120,9 @@ To avoid switching contexts, a minimal set of git tasks are provided.
 
 ## todo
 
-cache locally what I know doesn't change. (every client call is a remote api call)
+- cache locally what I know doesn't change. (every client call is a remote api call)
+- pass logger into base cmd to debug log all executed cmds
+- fork where it makes sense
 
 Doug Tangren (softprops) 2011
 
