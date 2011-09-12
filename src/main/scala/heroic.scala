@@ -248,7 +248,7 @@ object Plugin extends sbt.Plugin {
         GitCli.diff() ! out.log
     }
 
-  private def exec(pb: ProcessBuilder, msg: String = "", onSuccess: String = ""): Initialize[Task[Int]] =
+  private def exec(pb: => ProcessBuilder, msg: String = "", onSuccess: String = ""): Initialize[Task[Int]] =
     (streams) map {
       (out) =>
         if(!msg.isEmpty) out.log.info(msg)
