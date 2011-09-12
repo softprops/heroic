@@ -17,11 +17,14 @@ object Keys {
   val slugIgnore = TaskKey[File]("slug-ignore", "Generates a Heroku .slugignore file in the base directory")
 
   // client settings
+
+  // foreman gem
   val foreman = TaskKey[Int]("foreman", "Start Heroku foreman env")
+
+  // heroku gem
   val logs = InputKey[Int]("logs", "Invokes Heroku client logs command")
   val ps = TaskKey[Int]("ps", "Invokes Heroku client ps command")
   val create = TaskKey[Int]("create", "Invokes Heroku client create command")
-  val push = TaskKey[Int]("push", "Pushes project to Heroku")
   val info = TaskKey[Int]("info", "Displays Heroku deployment info")
   val addons = TaskKey[Int]("addons", "Lists installed Heroku addons")
   val addonsAdd = InputKey[Int]("addons-add", "Install a Heroku addon by name")
@@ -41,6 +44,9 @@ object Keys {
   val domains = TaskKey[Int]("domains", "List Heroku domains")
   val domainsAdd = InputKey[Int]("domains-add", "Add a Heroku domain")
   val domainsRm = InputKey[Int]("domains-rm", "Removes a Heroku domain")
+
+  // git cmd masquerading around as a heroku cmd
+  val push = TaskKey[Int]("push", "Pushes project to Heroku")
 
   // git settings
   val diff = TaskKey[Int]("git-diff", "Displays a diff of untracked sources")
@@ -99,7 +105,8 @@ object Plugin extends sbt.Plugin {
          includingMvnPlugin(Path.relativeTo(base)(src).get, sv)
        )
     ),
-    jvmOpts := Seq("-Xmx256m","-Xss2048k"),
+    // should maybe default to (javaOptions in Compile) here?
+    jvmOpts :=  Seq("-Xmx256m","-Xss2048k"),
     main <<= (mainClass in Runtime).identity,
     scriptName := "hero",
     script <<= scriptTask,
@@ -286,7 +293,7 @@ object Plugin extends sbt.Plugin {
     exec(Heroku.addons.show, "Fetching addons")
 
   private def confTask: Initialize[Task[Int]] =
-    exec(Heroku.config.show, "Fetching application configuration")
+   exec(Heroku.config.show, "Fetching application configuration")
 
   // note you can pass --remote name to overrivde
   // heroku's default remote name for multiple envs
@@ -469,5 +476,5 @@ object Plugin extends sbt.Plugin {
     new RuleTransformer(AddBuild, EnsureEncoding)(pom)
   }
 
-  val options: Seq[Setting[_]] = pkgSettings ++ clientSettings ++ gitSettings
+  def options: Seq[Setting[_]] = pkgSettings ++ clientSettings ++ gitSettings
 }
