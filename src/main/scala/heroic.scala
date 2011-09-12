@@ -11,7 +11,7 @@ object Keys {
   val script = TaskKey[File]("script", "Generates driver script")
   val checkDependencies = TaskKey[Boolean]("check-dependencies", "Checks to see if required dependencies are installed")
   val scriptName = SettingKey[String]("script-name", "Name of the generated driver script")
-  val jvmOpts = SettingKey[Seq[String]]("jvm-opts", """Sequence of jvm options, defaults to Seq("-Xmx256m","-Xss2048k")""")
+  val javaOptions = SettingKey[Seq[String]]("java-options", """Sequence of jvm options, defaults to Seq("-Xmx256m","-Xss2048k")""")
   val pom = TaskKey[File]("pom", "Generates and copies project pom to project base")
   val slugIgnored = SettingKey[Seq[String]]("slug-ignored", "List of items to ignore when transfering application")
   val slugIgnore = TaskKey[File]("slug-ignore", "Generates a Heroku .slugignore file in the base directory")
@@ -106,7 +106,10 @@ object Plugin extends sbt.Plugin {
        )
     ),
     // should maybe default to (javaOptions in Compile) here?
-    jvmOpts :=  Seq("-Xmx256m","-Xss2048k"),
+    (sbt.Keys.javaOptions in Hero) <<= (heroic.Keys.javaOptions in run)(_ match {
+      case Nil => Seq("-Xmx256m","-Xss2048k")
+      case provided => provided
+    }),
     main <<= (mainClass in Runtime).identity,
     scriptName := "hero",
     script <<= scriptTask,
@@ -234,7 +237,6 @@ object Plugin extends sbt.Plugin {
     }
   ))
 
-
   private def statusTask: Initialize[Task[Int]] =
     (streams) map {
       (out) =>
@@ -360,7 +362,7 @@ object Plugin extends sbt.Plugin {
 
   private def scriptTask: Initialize[Task[File]] =
     (main, streams, scalaVersion, fullClasspath in Runtime, baseDirectory,
-     moduleSettings, scriptName, jvmOpts, scalaInstance) map {
+     moduleSettings, scriptName, heroic.Keys.javaOptions in Hero, scalaInstance) map {
       (main, out, sv, cp, base, mod, scriptName, jvmOpts, si) => main match {
         case Some(mainCls) =>
 
