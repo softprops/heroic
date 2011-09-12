@@ -64,8 +64,8 @@ object Plugin extends sbt.Plugin {
   import heroic.Keys._
   import heroic.{Git => GitCli}
 
-  val Hero = config("hero") extend(Runtime)
-  val Git = config("git") extend(Runtime)
+  val Hero = config("hero")
+  val Git = config("git")
 
   def gitSettings: Seq[Setting[_]] = inConfig(Git)(Seq(
     diff <<= diffTask,
@@ -125,7 +125,7 @@ object Plugin extends sbt.Plugin {
         val p =
           args match {
             case Seq() => Heroku.logs.show
-            // tailing does seem to work in sbt, might take this out
+            // tailing doesn't seem to work in sbt, might take this out
             case Seq("-t") => Heroku.logs.tail
           }
         p ! out.log
