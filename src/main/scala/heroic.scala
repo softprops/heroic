@@ -115,7 +115,7 @@ object Plugin extends sbt.Plugin {
     script <<= scriptTask,
     procfile <<= procfileTask,
     pom <<= pomTask,
-    slugIgnored := Seq("project", "src/test", "target"),
+    slugIgnored := Seq("build.sbt", "project", "src/test", "target"),
     slugIgnore <<= slugIgnoreTask,
     prepare <<= Seq(script, procfile, pom, slugIgnore).dependOn,
     checkDependencies <<= checkDependenciesTask
@@ -238,17 +238,10 @@ object Plugin extends sbt.Plugin {
   ))
 
   private def statusTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        // todo: parse output, and render nicely
-        GitCli.status() ! out.log
-    }
+    exec(GitCli.status())
 
   private def diffTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        GitCli.diff() ! out.log
-    }
+    exec(GitCli.diff())
 
   private def exec(pb: => ProcessBuilder, msg: String = "", onSuccess: String = ""): Initialize[Task[Int]] =
     (streams) map {
@@ -275,15 +268,7 @@ object Plugin extends sbt.Plugin {
     exec(Heroku.maintenance.off, "Disabling maintenance mode")
 
   private def foremanTask: Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        val chk = Foreman.check ! out.log
-        if(chk == 0) {
-          out.log.info("Starting foreman")
-          Foreman.start ! out.log
-        }
-        else chk
-    }
+    exec(Foreman.check #&& Foreman.start, "Starting foreman env")
 
   private def psTask: Initialize[Task[Int]] =
     exec(Heroku.ps.show, "Fetching process info")
