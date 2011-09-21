@@ -1,0 +1,3 @@
+# prepare should fail fast
+# if there is no main class detected
+-> hero:prepare

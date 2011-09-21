@@ -1,4 +1,4 @@
-package heroic
+genpackage heroic
 
 import sbt._
 import Project.Initialize

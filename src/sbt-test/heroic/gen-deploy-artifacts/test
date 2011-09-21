@@ -1,0 +1,4 @@
+# should generate deploy artifacts
+> hero:prepare
+$ exists pom.xml
+$ exists ProcFile
