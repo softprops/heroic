@@ -11,3 +11,10 @@ version <<= sbtVersion(v =>
 )
 
 seq(ScriptedPlugin.scriptedSettings: _*)
+
+libraryDependencies ++= Seq(
+  "net.databinder" %% "dispatch-http" % "0.8.5",
+  "com.codahale" %% "jerkson" % "0.4.2"
+)
+
+resolvers += "coda" at "http://repo.codahale.com"

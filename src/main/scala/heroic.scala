@@ -10,6 +10,7 @@ object Plugin extends sbt.Plugin {
   import sbt.Keys._
   import HeroKeys._
   import heroic.{Git => GitCli}
+  import com.codahale.jerkson.Json._
 
   object HeroKeys {
     // pgk settings
@@ -25,7 +26,7 @@ object Plugin extends sbt.Plugin {
 
     // client settings
 
-    val localHero = TaskKey[Int]("local-hero", "Starts a local Heroku env")
+    val localHero = TaskKey[Unit]("local-hero", "Starts a local Heroku env")
 
     // heroku gem
     val logs = InputKey[Int]("logs", "Invokes Heroku client logs command")
@@ -33,6 +34,7 @@ object Plugin extends sbt.Plugin {
     val create = TaskKey[Int]("create", "Invokes Heroku client create command")
     val info = TaskKey[Int]("info", "Displays Heroku deployment info")
     val addons = TaskKey[Int]("addons", "Lists installed Heroku addons")
+    val addonsAvailable = TaskKey[Int]("addons-available", "Lists available Heroku addons")
     val addonsAdd = InputKey[Int]("addons-add", "Install a Heroku addon by name")
     val addonsRm = InputKey[Int]("addons-rm", "Uninstall a Heroku addon by name")
     // upgrade requires user stdin, not sure how to handle this yet
@@ -60,10 +62,18 @@ object Plugin extends sbt.Plugin {
     val commit = InputKey[Int]("git-commit", "Commits a staging area with an optional msg")
     val add = InputKey[Int]("git-add", "Adds an optional list of paths to the git index, defaults to '.'")
     val git = InputKey[Int]("exec", "Executes arbitrary git command")
+
+    val auth = TaskKey[Unit]("auth", "Get or acquires heroku credentials")
   }
 
   val Hero = config("hero")
   val Git = config("git")
+
+  private def client[T](f: HerokuClient => T): T =
+    Auth.credentials match {
+      case Some((user, key)) => f(HerokuClient(user,key))
+      case _ => sys.error("Not authenticated. Try hero:auth")
+    }
 
   def gitSettings: Seq[Setting[_]] = inConfig(Git)(Seq(
     diff <<= diffTask,
@@ -119,17 +129,24 @@ object Plugin extends sbt.Plugin {
     checkDependencies <<= checkDependenciesTask
   ))
 
+  def authTask: Initialize[Task[Unit]] =
+    (streams) map {
+      (out) => Auth.acquireCredentials(out.log)
+    }
+
   def clientSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
+    auth <<= authTask,
     localHero <<= localHeroTask,
     logs <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
-        val p =
-          args match {
-            case Seq() => Heroku.logs.show
-            // tailing doesn't seem to work in sbt, might take this out
-            case Seq("-t") => Heroku.logs.tail
-          }
-        p ! out.log
+         client { cli =>
+           out.log.info("Fetching recent remote logs")
+           val http = new dispatch.Http with dispatch.HttpsLeniency
+           http(cli.logs() >~ { src =>
+              src.getLines().foreach(l => out.log.info(l))
+            })
+            0
+         }
       }
     },
     ps <<= psTask,
@@ -141,8 +158,16 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(key, value) =>
-            out.log.info("assigning config var %s" format key)
-            Heroku.config.add(key, value) ! out.log
+            client { cli =>
+              out.log.info("assigning config var %s to %s" format(key, value))
+              val updated = parse[Map[String, String]](
+                dispatch.Http(cli.config().add(key, value) as_str)
+              )
+              out.log.info("Updated config")
+              printMap(updated, out.log)
+              0
+            }
+          case _ => sys.error("usage: hero:conf-add <key> <val>")
         }
       }
     },
@@ -150,18 +175,33 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(key) =>
-            out.log.info("removing config var %s" format key)
-            Heroku.config.rm(key) ! out.log
+            client { cli =>
+              out.log.info("removing config var %s" format key)
+              val updated = parse[Map[String, String]](
+                dispatch.Http(cli.config().rm(key) as_str)
+              )
+              out.log.info("Updated config")
+              printMap(updated, out.log)
+              0
+            }
+          case _ => sys.error("usage: hero:conf-rm <key>");
         }
       }
     },
     addons <<= addonsTask,
+    addonsAvailable <<= addonsAvailableTask,
     addonsAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(feature) =>
-            out.log.info("requesting addon")
-            Heroku.addons.add(feature) ! out.log
+            client { cli =>
+              out.log.info("requesting addon")
+              out.log.info(
+                dispatch.Http(cli.addons().add(feature) as_str)
+              )
+              0
+            }
+          case _ => sys.error("usage hero:addons-add <feature>")
         }
       }
     },
@@ -169,8 +209,14 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(feature) =>
-            out.log.info("Requesting addon removal")
-            Heroku.addons.rm(feature) ! out.log
+            client { cli =>
+              out.log.info("requesting addon removal")
+              out.log.info(
+                dispatch.Http(cli.addons().rm(feature) as_str)
+              )
+              0
+            }
+          case _ =>  sys.error("usage hero:addons-rm <feature>")
         }
       }
     },
@@ -191,7 +237,12 @@ object Plugin extends sbt.Plugin {
         args match {
           case Seq(rel) =>
             out.log.info("Fetching release listing")
-            Heroku.releases.info(rel) ! out.log
+            client { cli =>
+              out.log.info(
+                dispatch.Http(cli.releases().show(rel) as_str)
+              )
+              0
+            }
         }
       }
     },
@@ -199,8 +250,14 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(to) =>
-            out.log.info("Rolling back release")
+            client { cli =>
+              out.log.info("Rolling back release")
+              out.log.info(
+                dispatch.Http(cli.rollback(to) as_str)
+              )
+            }
             Heroku.releases.rollback(to) ! out.log
+          case _ => sys.error("usage: hero:rollback <release>")
         }
       }
     },
@@ -209,8 +266,19 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(to) =>
-            out.log.info("Requesting subdomain")
-            Heroku.apps.rename(to) ! out.log
+            client { cli =>
+              out.log.info("Requesting subdomain")
+              try {
+                out.log.info(
+                  dispatch.Http(cli.rename(to) as_str)
+                )
+              } catch {
+                case dispatch.StatusCode(406, msg) =>
+                  out.log.warn("Fail to rename app. %s" format msg)
+              }
+              0
+            }
+          case _ => sys.error("usage: hero:rename <new-subdomain>")
         }
       }
     },
@@ -250,20 +318,47 @@ object Plugin extends sbt.Plugin {
         stat
     }
 
-  private def domainsTask: Initialize[Task[Int]] =
-    exec(Heroku.domains.show, "Fetching domains")
+  private def domainsTask: Initialize[Task[Int]] = (streams) map {
+    (out) =>
+      client { cli =>
+        out.log.info(dispatch.Http(cli.domains().show as_str))
+        0
+      }
+  }
 
   private def openTask: Initialize[Task[Int]] =
     exec(Heroku.apps.open, "Launching application")
 
-  private def releasesTask: Initialize[Task[Int]] =
+  private def releasesTask: Initialize[Task[Int]] = (streams) map {
+    (out) =>
+      client { cli =>
+        out.log.info(dispatch.Http(cli.releases().list as_str))
+        0
+      }
+  }
     exec(Heroku.releases.show, "Fetching release listing")
 
-  private def maintenanceOnTask: Initialize[Task[Int]] =
-    exec(Heroku.maintenance.on, "Enabling maintenance mode")
+  private def maintenanceOnTask: Initialize[Task[Int]] = (streams) map {
+    (out) =>
+      client { cli =>
+        out.log.info(
+          dispatch.Http(cli.maintenance(true) as_str)
+        )
+        out.log.info("Maintenance mode enabled.")
+        0
+      }
+  }
 
-  private def maintenanceOffTask: Initialize[Task[Int]] =
-    exec(Heroku.maintenance.off, "Disabling maintenance mode")
+  private def maintenanceOffTask: Initialize[Task[Int]] = (streams) map {
+    (out) =>
+      client { cli =>
+        out.log.info(
+          dispatch.Http(cli.maintenance(false) as_str)
+        )
+        out.log.info("Maintenance mode disabled.")
+        0
+      }
+  }
 
   private def localHeroTask: Initialize[Task[Unit]] = (baseDirectory, streams) map {
     (bd, out) =>
@@ -277,17 +372,81 @@ object Plugin extends sbt.Plugin {
       p.foreach(_.destroy())
       out.log.info("Process complete")
   }
+
   private def psTask: Initialize[Task[Int]] =
-    exec(Heroku.ps.show, "Fetching process info")
+    (streams) map {
+      (out) =>
+        client { cli =>
+          out.log.info("Fetching process info")
+          out.log.info(dispatch.Http(cli.ps() as_str))
+          0
+        }
+    }
 
   private def infoTask: Initialize[Task[Int]] =
+    (streams) map {
+      (out) =>
+        client { cli =>
+          out.log.info("Fetching App info")
+          out.log.info(dispatch.Http(cli.info() as_str))
+          0
+        }
+    }
     exec(Heroku.info, "Fetching application info")
 
   private def addonsTask: Initialize[Task[Int]] =
-    exec(Heroku.addons.show, "Fetching addons")
+    (streams) map {
+      (out) =>
+        client { cli =>
+          printAddons(parse[List[Map[String, String]]](
+            dispatch.Http(cli.addons().show as_str)
+          ), out.log)
+          0
+        }
+    }
 
-  private def confTask: Initialize[Task[Int]] =
-   exec(Heroku.config.show, "Fetching application configuration")
+  private def addonsAvailableTask: Initialize[Task[Int]] =
+    (streams) map {
+      (out) =>
+        client { cli =>
+          printAddons(parse[List[Map[String, String]]](
+            dispatch.Http(cli.addons().available as_str)
+          ), out.log)
+          0
+        }
+    }
+
+  private def printMap(m: Map[String, String], log: Logger) = {
+    val disp =
+      "%-" +
+      (m.keys.toSeq.sortWith(_.size > _.size).head.size) +
+      "s -> %s"
+    m.foreach { case (k, v) =>
+      log.info(disp format(k, v))
+    }
+  }
+
+  private def printAddons(aos: List[Map[String, String]], log: Logger) = {
+    val disp = "%-"+aos.map(_("name").size).sortWith(_ > _).head +"s %s %s"
+    (aos map { ao =>
+      disp format(
+        ao("name"), ao("description"),
+        if(ao("url") == "null") "" else ao("url")
+      )
+    }).sortWith(_.compareTo(_) < 0).foreach(log.info(_))
+  }
+
+  private def confTask: Initialize[Task[Int]] = (streams) map {
+    (out) =>
+      client { cli =>
+        import com.codahale.jerkson.Json._
+        out.log.info("Fetching remote configuration")
+        printMap(parse[Map[String, String]](
+          dispatch.Http(cli.config().show as_str)
+        ), out.log)
+        0
+      }
+  }
 
   // note you can pass --remote name to overrivde
   // heroku's default remote name for multiple envs
@@ -295,6 +454,7 @@ object Plugin extends sbt.Plugin {
   private def createTask: Initialize[Task[Int]] =
     exec(Heroku.create, "Creating application")
 
+  // todo: check for local changes...
   private def pushTask: Initialize[Task[Int]] =
     exec(GitCli.push("heroku"), "Updating application (this may take a few seconds)",
          "Check the status of your application with `hero:ps` or `hero:logs`"
@@ -336,7 +496,7 @@ object Plugin extends sbt.Plugin {
   private def checkDependenciesTask: Initialize[Task[Boolean]] =
     (streams) map {
       (out) =>
-        val install = (Map.empty[String, Boolean] /: Seq("heroku", "foreman", "mvn", "git"))(
+        val install = (Map.empty[String, Boolean] /: Seq("heroku", "mvn", "git"))(
           (a,e) =>
             try {
               a + (e -> Process("which %s" format(e)).!!.matches(".*%s\\s+".format(e)))
@@ -372,7 +532,7 @@ object Plugin extends sbt.Plugin {
                  artifact.split("-").last,
                  artifact
              )
-             case notInIvy => error("not supported %s" format notInIvy)
+             case notInIvy => sys.error("not supported %s" format notInIvy)
           }
 
           /* Hope for a moduleSetting that provides a moduleId
@@ -381,7 +541,7 @@ object Plugin extends sbt.Plugin {
           val mid = mod match {
             case InlineConfiguration(id, _, _, _, _, _, _, _) => id
             case EmptyConfiguration(id, _, _, _) => id
-            case _ => error("This task requires a module id")
+            case _ => sys.error("This task requires a module id")
           }
 
           /* https://github.com/harrah/xsbt/blob/0.10/ivy/IvyInterface.scala#L12 */
@@ -410,7 +570,7 @@ object Plugin extends sbt.Plugin {
           IO.write(sf, scriptBody)
           sf
 
-        case _ => error("Main class required")
+        case _ => sys.error("Main class required")
       }
     }
 
@@ -421,7 +581,7 @@ object Plugin extends sbt.Plugin {
     def adopt(parent: Node, kid: Node) = parent match {
       case Elem(prefix, label, attrs, scope, kids @ _*) =>
         Elem(prefix, label, attrs, scope, kids ++ kid : _*)
-      case _ => error("Only elements can adopt")
+      case _ => sys.error("Only elements can adopt")
     }
 
     object EnsureEncoding extends RewriteRule {
