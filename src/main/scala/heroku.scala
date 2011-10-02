@@ -26,6 +26,7 @@ case class HerokuClient(user: String, password: String) {
     //def upgrade
   }
 
+   /* more info @ http://devcenter.heroku.com/articles/config-vars */
   def config(app: String = GitClient.remotes("heroku")) = new {
     private def c = api / "apps" / app / "config_vars" <:< AcceptJson as_!(user, password)
     def show = c
@@ -45,7 +46,8 @@ case class HerokuClient(user: String, password: String) {
   def info(app: String = GitClient.remotes("heroku")) =
     api / "apps" / app <:< AcceptJson as_!(user, password)
 
-
+   /* more info @ http://devcenter.heroku.com/articles/logging */
+  /* todo drains @ http://devcenter.heroku.com/articles/logging#syslog_drains */
   def logs(app: String = GitClient.remotes("heroku")) = {
     val base = api / "apps" / app  / "logs" <:< AcceptJson as_!(user, password)
     val uri = Http(base <<? Map(

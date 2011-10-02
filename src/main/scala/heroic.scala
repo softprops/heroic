@@ -255,8 +255,8 @@ object Plugin extends sbt.Plugin {
               out.log.info(
                 dispatch.Http(cli.rollback(to) as_str)
               )
+             0
             }
-            Heroku.releases.rollback(to) ! out.log
           case _ => sys.error("usage: hero:rollback <release>")
         }
       }
@@ -336,7 +336,6 @@ object Plugin extends sbt.Plugin {
         0
       }
   }
-    exec(Heroku.releases.show, "Fetching release listing")
 
   private def maintenanceOnTask: Initialize[Task[Int]] = (streams) map {
     (out) =>
@@ -392,7 +391,6 @@ object Plugin extends sbt.Plugin {
           0
         }
     }
-    exec(Heroku.info, "Fetching application info")
 
   private def addonsTask: Initialize[Task[Int]] =
     (streams) map {
