@@ -1,4 +1,4 @@
-shpackage heroic
+package heroic
 
 import sbt.Process
 import Process._

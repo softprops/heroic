@@ -13,6 +13,11 @@ case class HerokuClient(user: String, password: String) {
     "password" -> password
   )
 
+  private def escape(raw: String) =
+    java.net.URLEncoder.encode(raw).replaceAll(
+      "[.]", "%2E"
+    )
+
   def addons(app: String = GitClient.remotes("heroku")) = new {
     private def all = api / "addons" <:< AcceptJson as_!(user, password)
     private def mine = api / "apps" / app / "addons" <:< AcceptJson as_!(
@@ -20,9 +25,13 @@ case class HerokuClient(user: String, password: String) {
     )
     def available = all
     def show = mine
-    def add(name: String) = mine.POST / name
+    def add(name: String) =
+      mine.POST / name
     def rm(name: String) = mine.DELETE / name
-    //def upgrade
+    def upgrade(name: String) =
+      mine.PUT / name
+    def downgrade(name: String) =
+      upgrade(name)
   }
 
   // created is inferred from a 201 http status 
@@ -50,6 +59,11 @@ case class HerokuClient(user: String, password: String) {
     ))
     def rm(key: String) = c.DELETE / key
   }
+
+  def confirmBilling =
+    api.POST / "user" / escape(user) / "confirm_billing" <:< AcceptJson as_!(
+      user, password
+    )
 
   // todo: can optionally post with a name
   // more info @ http://devcenter.heroku.com/articles/multiple-environments

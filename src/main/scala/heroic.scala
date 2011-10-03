@@ -41,7 +41,7 @@ object Plugin extends sbt.Plugin {
     val addonsAvailable = TaskKey[Unit]("addons-available", "Lists available Heroku addons")
     val addonsAdd = InputKey[Unit]("addons-add", "Install a Heroku addon by name")
     val addonsRm = InputKey[Unit]("addons-rm", "Uninstall a Heroku addon by name")
-    // upgrade requires user stdin, not sure how to handle this yet
+    // punt for now
     //val addonsUpgrade = InputKey[Int]("addons-upgrade", "Upgrade an installed Heroku addon")
     val conf = TaskKey[Unit]("conf", "Lists available remote Heroku config properties")
     val confAdd = InputKey[Unit]("conf-add", "Adds a Heroku config property")
@@ -227,11 +227,33 @@ object Plugin extends sbt.Plugin {
         args match {
           case Seq(feature) =>
             client { cli =>
-              out.log.info("requesting addon")
-              out.log.info(
-                dispatch.Http(cli.addons().add(feature) as_str)
-              )
-              0
+              out.log.info("Requesting addon")
+              try {
+                val ao = parse[Map[String, String]](
+                  dispatch.Http(cli.addons().add(feature) as_str)
+                )
+                if(ao("status").equals("Installed")) {
+                  out.log.info("addon %s installed" format feature)
+                  out.log.info("price: %s" format ao("price"))
+                  if(!ao("message").equals("null")) "message %s" format(
+                    ao("message")
+                  )
+                } else {
+                  sys.error("Addon was not added. response %s." format(ao))
+                }
+              } catch {
+                case dispatch.StatusCode(422, msg) => // error
+                  val resp = parse[Map[String, String]](msg)
+                  sys.error(
+                    "Addon was not added. %s" format resp("error")
+                  )
+                case dispatch.StatusCode(402, msg) => // billing?
+                  val resp = parse[Map[String, String]](msg)
+                  out.log.warn(resp("error"))
+                  if(confirmBilling(out.log, cli)) out.log.info(
+                    "You request to confirm billing was accepted."
+                  ) else out.log.info("Addon was not installed")
+              }
             }
           case _ => sys.error("usage hero:addons-add <feature>")
         }
@@ -242,17 +264,23 @@ object Plugin extends sbt.Plugin {
         args match {
           case Seq(feature) =>
             client { cli =>
-              out.log.info("requesting addon removal")
-              out.log.info(
-                dispatch.Http(cli.addons().rm(feature) as_str)
-              )
-              0
+              out.log.info("Requesting addon removal")
+              try {
+                dispatch.Http(cli.addons().rm(feature) >|)
+                out.log.info("Removed addon %s" format feature)
+              } catch {
+                case dispatch.StatusCode(422, msg) =>
+                  val resp = parse[Map[String, String]](msg)
+                  sys.error(
+                    "Error removing addon %s" format resp("error")
+                  )
+              }
             }
           case _ =>  sys.error("usage hero:addons-rm <feature>")
         }
       }
     },
-    /*addonsUpgrade <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    /* addonsUpgrade <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         args match {
           case Seq(feature) =>
@@ -261,6 +289,7 @@ object Plugin extends sbt.Plugin {
         }
       }
     }, */
+    
     maintenanceOn <<= maintenanceOnTask,
     maintenanceOff <<= maintenanceOffTask,
     releases <<= releasesTask,
@@ -357,7 +386,7 @@ object Plugin extends sbt.Plugin {
               file(kf) match {
                 case f if(f.exists) =>
                   out.log.info(dispatch.Http(cli.keys.rm(IO.read(f)) as_str))
-                case f => error("%s does not exist" format f)
+                case f => sys.error("%s does not exist" format f)
               }
             case _ => sys.error("usage: hero:keys-rm <path-to-key>")
           }
@@ -365,6 +394,23 @@ object Plugin extends sbt.Plugin {
       }
     }
   ))
+
+  private def confirmBilling(log: Logger, client: HerokuClient) = {
+    log.warn(
+      "This action will cause your account to be billed at the end of the month"
+    )
+    log.warn(
+      "For more information, see http://devcenter.heroku.com/articles/billing"
+    )
+    val confirm = ask("Are you sure you want to do this? (y/n) ") {
+      _.trim.toLowerCase
+    }
+    if(Seq("y", "yes", "yep", "yea") contains confirm) {
+      log.info(dispatch.Http(client.confirmBilling as_str))
+      true
+    } else if (Seq("n", "no", "nope", "nah") contains confirm) false
+    else sys.error("unexpected answer %s" format confirm)
+  }
 
   private def statusTask: Initialize[Task[Int]] =
     exec(GitCli.status())
@@ -479,6 +525,7 @@ object Plugin extends sbt.Plugin {
         }
     }
 
+  // todo: make this an input task with a query filter (its a long list!)
   private def addonsTask: Initialize[Task[Unit]] =
     (streams) map {
       (out) =>
