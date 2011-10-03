@@ -3,6 +3,10 @@ package heroic
 import sbt._
 import Project.Initialize
 
+case class Release(env: Map[String, String], pstable: Map[String, String],
+                   commit: Option[String], descr: String, addons: Seq[String],
+                   created_at: String, user: String, name: String)
+
 /** Provides Heroku deployment capability.
  *  assumes exported env variables
  *  REPO path to m2 maven repository */
@@ -11,6 +15,7 @@ object Plugin extends sbt.Plugin {
   import HeroKeys._
   import heroic.{Git => GitCli}
   import com.codahale.jerkson.Json._
+
 
   object HeroKeys {
     // pgk settings
@@ -322,6 +327,7 @@ object Plugin extends sbt.Plugin {
         }
       }
     },
+    // fixme
     rename <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         args match {
@@ -455,11 +461,29 @@ object Plugin extends sbt.Plugin {
         }
     }
 
+ private def printRelease(r: Release, log: Logger, details: Boolean = false) = {
+   log.info("=== %s" format r.name)
+   log.info("created %s by %s %s" format(r.created_at, r.user, 
+     if(r.commit isDefined) "(%s)" format(r.commit.get) else ""
+   ))
+   if(details) {
+     log.info("ps table:")
+     printMap(r.pstable, log)
+     log.info("env:")
+     printMap(r.env, log)
+     log.info("addons:")
+     r.addons.foreach(log.info(_))
+   }
+ }
+
   private def releasesTask: Initialize[Task[Unit]] =
     (streams) map {
       (out) =>
         client { cli =>
-          out.log.info(dispatch.Http(cli.releases().list as_str))
+          val rs = parse[Seq[Release]](
+            dispatch.Http(cli.releases().list as_str)
+          )
+          rs.foreach(printRelease(_, out.log))
         }
     }
 
@@ -504,8 +528,16 @@ object Plugin extends sbt.Plugin {
       (out) =>
         client { cli =>
           out.log.info("Fetching process info")
-          out.log.info(dispatch.Http(cli.ps() as_str))
-          0
+          val px = parse[Seq[Map[String, String]]](
+            dispatch.Http(cli.ps() as_str)
+          )
+          px.foreach { p =>
+            out.log.info(
+              "%s %s %s" format(
+                p("process"), p("pretty_state"), p("command")
+              )
+            )
+          }
         }
     }
 
@@ -573,9 +605,13 @@ object Plugin extends sbt.Plugin {
       client { cli =>
         import com.codahale.jerkson.Json._
         out.log.info("Fetching remote configuration")
-        printMap(parse[Map[String, String]](
-          dispatch.Http(cli.config().show as_str)
-        ), out.log)
+        try {
+          printMap(parse[Map[String, String]](
+            dispatch.Http(cli.config().show as_str)
+          ), out.log)
+        } catch {
+          case _ => out.log.info("Empty config")
+        }
       }
   }
 
@@ -635,7 +671,7 @@ object Plugin extends sbt.Plugin {
     (streams) map {
       (out) =>
         val confirm = ask(
-          "Are you sure you want to remove this application: [Y/N] ") {
+          "Are you sure you want to destory this application: [Y/N] ") {
           _.trim.toLowerCase
         }
         if(Seq("n", "no", "nope", "nah") contains confirm) out.log.info(
