@@ -1,6 +1,5 @@
 package heroic
 
-
 case class HerokuClient(user: String, password: String) {
   import com.codahale.jerkson.Json._
   import HerokuClient._
@@ -26,6 +25,21 @@ case class HerokuClient(user: String, password: String) {
     //def upgrade
   }
 
+  // created is inferred from a 201 http status 
+  def appStatus(app: String = GitClient.remotes("heroku")) =
+    api.PUT / "apps" / app / "status" <:< Map("Accept"->"text/plain") as_!(user, password)
+
+  def collaborators(app: String = GitClient.remotes("heroku")) = new {
+    private def collab = api / "apps" / app / "collaborators" <:< AcceptJson as_!(
+      user, password
+    )
+    def add(email: String) = collab.POST << Map(
+      "collaborator[email]" -> email
+    )
+    def rm(email: String) = collab.DELETE / email
+    def show = collab
+  }
+
    /* more info @ http://devcenter.heroku.com/articles/config-vars */
   def config(app: String = GitClient.remotes("heroku")) = new {
     private def c = api / "apps" / app / "config_vars" <:< AcceptJson as_!(user, password)
@@ -36,6 +50,16 @@ case class HerokuClient(user: String, password: String) {
     ))
     def rm(key: String) = c.DELETE / key
   }
+
+  // todo: can optionally post with a name
+  // more info @ http://devcenter.heroku.com/articles/multiple-environments
+  def create(remote: String = "heroku", stack: String = "cedar") =
+    (api.POST / "apps" <:< AcceptJson as_!(user, password)) << Map(
+      "app[stack]" -> stack
+    )
+
+  def destroy(app: String = GitClient.remotes("heroku")) =
+    api.DELETE / "apps" / app <:< AcceptJson as_!(user, password)
 
   def domains(app: String = GitClient.remotes("heroku")) = new {
     def show = api / "apps" / app / "domains" <:< AcceptJson as_!(user, password)
@@ -60,13 +84,19 @@ case class HerokuClient(user: String, password: String) {
   def cronLogs(app: String = GitClient.remotes("heroku")) = 
     api / "apps" / app / "cron_logs" <:< AcceptJson as_!(user, password)
 
+  def keys = new {
+    val ks = api / "user" / "keys" <:< AcceptJson as_!(user, password)
+    def show = ks
+    def add(key: String) = ks.POST <<(key, "text/ssh-authkey")
+    def rm(key: String) = ks.DELETE / key
+  }
+
   def maintenance(on: Boolean, app: String = GitClient.remotes("heroku")) =
     (api.POST / "apps" / app / "server" / "maintenance" <:< AcceptJson as_!(
       user, password)) << Map(
       "maintenance_mode" -> (if(on) "1" else "0")
     )
 
-  // fixme: only works after you've adding heroku as a remote
   def ps(app: String = GitClient.remotes("heroku")) =
     api / "apps" / app / "ps" <:< AcceptJson as_!(user, password)
 
@@ -118,13 +148,38 @@ object HerokuClient {
 
 object GitClient {
   val HerokuRemote = """^git@heroku.com:([\w\d-]+)\.git$""".r
+
+  // returns map of remote -> appName
   def remotes =
-    (Map.empty[String, String] /: (sbt.Process("git remote -v") !!).split('\n').map(_.split("""\s+""")))(
-      (a, e) =>
-        e match {
-          case Array(name, HerokuRemote(app), _) =>
-            a + (name -> app)
-          case not => println("remote %s did not match" format not.toList);a
-        }
-    )
+    (Map.empty[String, String] /: (sbt.Process("git remote -v") !!)
+     .split('\n').map(_.split("""\s+""")))(
+       (a, e) =>
+         e match {
+           case Array(name, HerokuRemote(app), _) =>
+             a + (name -> app)
+           case _ => a
+         }
+      )
+
+  def remoteRm(remote: String) =
+    sbt.Process("git remote rm %s" format remote) !
+
+  def updateRemote(app: String, remote: String = "heroku",
+                   host: String = "heroku.com") = {
+    if(remotes.isDefinedAt(remote)) {
+      remoteRm(remote)
+      addRemote(app, remote, host)
+    } else {
+      addRemote(app, remote, host)
+    }
+  }
+
+  def addRemote(app: String, remote: String = "heroku",
+                host: String = "heroku.com") =
+    if(remotes.isDefinedAt(remote)) 0 // already have one
+    else sbt.Process(
+      "git remote add %s git@%s:%s.git" format(
+        remote, host, app
+      )) !
+
 }

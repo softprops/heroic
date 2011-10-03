@@ -1,4 +1,4 @@
-package heroic
+shpackage heroic
 
 import sbt.Process
 import Process._
@@ -39,13 +39,6 @@ object Git extends Cmd("git", "download from http://git-scm.com/download") {
 }
 
 object Heroku extends Cmd("heroku", "try `gem install heroku`") {
-
-  /* more info @ http://devcenter.heroku.com/articles/multiple-environments */
-  def create = call("create --stack cedar")
-  def apps = new {
-    def destroy = call("apps:destroy")
-    def open = call("apps:open")
-  }
 
   def ps = new {
     def scale(proc: String, n: Int) = call("ps:scale %s=%s" format(proc, n))

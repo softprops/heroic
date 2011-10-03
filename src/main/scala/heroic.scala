@@ -29,34 +29,38 @@ object Plugin extends sbt.Plugin {
     val localHero = TaskKey[Unit]("local-hero", "Starts a local Heroku env")
 
     // heroku gem
-    val logs = InputKey[Int]("logs", "Invokes Heroku client logs command")
-    val ps = TaskKey[Int]("ps", "Invokes Heroku client ps command")
-    val create = TaskKey[Int]("create", "Invokes Heroku client create command")
-    val info = TaskKey[Int]("info", "Displays Heroku deployment info")
-    val addons = TaskKey[Int]("addons", "Lists installed Heroku addons")
-    val addonsAvailable = TaskKey[Int]("addons-available", "Lists available Heroku addons")
-    val addonsAdd = InputKey[Int]("addons-add", "Install a Heroku addon by name")
-    val addonsRm = InputKey[Int]("addons-rm", "Uninstall a Heroku addon by name")
+    val collaborators = TaskKey[Unit]("collaborators", "Lists Heroku application collaborators")
+    val collaboratorsAdd = InputKey[Unit]("collaborators-add", "Adds a Heroku application collaborator by email")
+    val collaboratorsRm = InputKey[Unit]("collaborators-rm", "Removes a Heroku application collaborator by email")
+    val logs = InputKey[Unit]("logs", "Invokes Heroku client logs command")
+    val ps = TaskKey[Unit]("ps", "Invokes Heroku client ps command")
+    val create = TaskKey[Unit]("create", "Invokes Heroku client create command")
+    val destroy = TaskKey[Unit]("destroy", "Deletes remote application")
+    val info = TaskKey[Unit]("info", "Displays Heroku deployment info")
+    val addons = TaskKey[Unit]("addons", "Lists installed Heroku addons")
+    val addonsAvailable = TaskKey[Unit]("addons-available", "Lists available Heroku addons")
+    val addonsAdd = InputKey[Unit]("addons-add", "Install a Heroku addon by name")
+    val addonsRm = InputKey[Unit]("addons-rm", "Uninstall a Heroku addon by name")
     // upgrade requires user stdin, not sure how to handle this yet
     //val addonsUpgrade = InputKey[Int]("addons-upgrade", "Upgrade an installed Heroku addon")
-    val conf = TaskKey[Int]("conf", "Lists available remote Heroku config properties")
-    val confAdd = InputKey[Int]("conf-add", "Adds a Heroku config property")
-    val confRm = InputKey[Int]("conf-rm", "Removes a Heroku config property")
-    val maintenanceOff = TaskKey[Int]("maint-off", "Turns on Heroku Maintenance mode")
-    val maintenanceOn = TaskKey[Int]("maint-on", "Turns off Heroku Maintenance mode")
-    val releases = TaskKey[Int]("releases", "Lists all releases")
-    val releaseInfo = InputKey[Int]("release-info", "Shows info about a target release")
-    val rollback = InputKey[Int]("rollback", "Rolls back to a target release")
-    val open = TaskKey[Int]("open", "Opens App in a browser")
-    val rename = InputKey[Int]("rename", "Give your app a custom subdomain on heroku")
-    val domains = TaskKey[Int]("domains", "List Heroku domains")
+    val conf = TaskKey[Unit]("conf", "Lists available remote Heroku config properties")
+    val confAdd = InputKey[Unit]("conf-add", "Adds a Heroku config property")
+    val confRm = InputKey[Unit]("conf-rm", "Removes a Heroku config property")
+    val maintenanceOff = TaskKey[Unit]("maint-off", "Turns on Heroku Maintenance mode")
+    val maintenanceOn = TaskKey[Unit]("maint-on", "Turns off Heroku Maintenance mode")
+    val releases = TaskKey[Unit]("releases", "Lists all releases")
+    val releaseInfo = InputKey[Unit]("release-info", "Shows info about a target release")
+    val rollback = InputKey[Unit]("rollback", "Rolls back to a target release")
+    val rename = InputKey[Unit]("rename", "Give your app a custom subdomain on heroku")
+    val domains = TaskKey[Unit]("domains", "List Heroku domains")
     val domainsAdd = InputKey[Int]("domains-add", "Add a Heroku domain")
     val domainsRm = InputKey[Int]("domains-rm", "Removes a Heroku domain")
-
-    // git cmd masquerading around as a heroku cmd
-    val push = TaskKey[Int]("push", "Pushes project to Heroku")
+    val keys = TaskKey[Unit]("keys", "Lists Heroku registered keys")
+    val keysAdd = InputKey[Unit]("keys-add", "Adds a registed key with heroku")
+    val keysRm = InputKey[Unit]("keys-rm", "Removes a registed key with heroku")
 
     // git settings
+    val push = TaskKey[Int]("push", "Pushes project to Heroku")
     val diff = TaskKey[Int]("git-diff", "Displays a diff of untracked sources")
     val status = TaskKey[Int]("git-status", "Display the status of your git staging area")
     val commit = InputKey[Int]("git-commit", "Commits a staging area with an optional msg")
@@ -135,6 +139,33 @@ object Plugin extends sbt.Plugin {
     }
 
   def clientSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
+    collaborators <<= collaboratorsTask,
+    collaboratorsAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq(email) =>
+            client { cli =>
+              out.log.info(
+                dispatch.Http(cli.collaborators().add(email) as_str)
+              )
+           }
+          case _ => sys.error("usage hero:collaborators-add <email>")
+        }
+      }
+    },
+    collaboratorsRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        args match {
+          case Seq(email) =>
+            client { cli =>
+              out.log.info(
+                dispatch.Http(cli.collaborators().rm(email) as_str)
+              )
+           }
+          case _ => sys.error("usage hero:collaborators-rm <email>")
+        }
+      }
+    },
     auth <<= authTask,
     localHero <<= localHeroTask,
     logs <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
@@ -151,6 +182,7 @@ object Plugin extends sbt.Plugin {
     },
     ps <<= psTask,
     create <<= createTask,
+    destroy <<= destroyTask,
     push <<= pushTask,
     info <<= infoTask,
     conf <<= confTask,
@@ -261,7 +293,6 @@ object Plugin extends sbt.Plugin {
         }
       }
     },
-    open <<= openTask,
     rename <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         args match {
@@ -272,6 +303,7 @@ object Plugin extends sbt.Plugin {
                 out.log.info(
                   dispatch.Http(cli.rename(to) as_str)
                 )
+                // todo. need to rename remote if successfull
               } catch {
                 case dispatch.StatusCode(406, msg) =>
                   out.log.warn("Fail to rename app. %s" format msg)
@@ -300,6 +332,37 @@ object Plugin extends sbt.Plugin {
             Heroku.domains.rm(dom) ! out.log
         }
       }
+    },
+    keys <<= keysTask,
+    keysAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        client { cli =>
+          args match {
+            case Seq(kf) =>
+              file(kf) match {
+                case f if(f.exists) =>
+                  out.log.info(dispatch.Http(cli.keys.add(IO.read(f)) as_str))
+                case f => sys.error("%s does not exist" format f)
+              }
+            case _ => sys.error("usage: hero:keys-add <path-to-key>")
+          }
+        }
+      }
+    },
+     keysRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        client { cli =>
+          args match {
+            case Seq(kf) =>
+              file(kf) match {
+                case f if(f.exists) =>
+                  out.log.info(dispatch.Http(cli.keys.rm(IO.read(f)) as_str))
+                case f => error("%s does not exist" format f)
+              }
+            case _ => sys.error("usage: hero:keys-rm <path-to-key>")
+          }
+        }
+      }
     }
   ))
 
@@ -318,61 +381,79 @@ object Plugin extends sbt.Plugin {
         stat
     }
 
-  private def domainsTask: Initialize[Task[Int]] = (streams) map {
-    (out) =>
-      client { cli =>
-        out.log.info(dispatch.Http(cli.domains().show as_str))
-        0
-      }
-  }
+  private def keysTask: Initialize[Task[Unit]] =
+    (streams) map {
+      (out) =>
+        client { cli =>
+          dispatch.Http(cli.keys.show <> { xml =>
+            (xml \\ "keys" \\ "key").map(_ \ "contents" text).foreach(
+              out.log.info(_)
+            )
+          })
+        }
+    }
 
-  private def openTask: Initialize[Task[Int]] =
-    exec(Heroku.apps.open, "Launching application")
+  private def collaboratorsTask: Initialize[Task[Unit]] =
+    (streams) map {
+      (out) =>
+        client { cli =>
+          out.log.info(dispatch.Http(cli.collaborators().show as_str))
+        }
+    }
 
-  private def releasesTask: Initialize[Task[Int]] = (streams) map {
-    (out) =>
-      client { cli =>
-        out.log.info(dispatch.Http(cli.releases().list as_str))
-        0
-      }
-  }
+  private def domainsTask: Initialize[Task[Unit]] =
+    (streams) map {
+      (out) =>
+        client { cli =>
+          out.log.info(dispatch.Http(cli.domains().show as_str))
+        }
+    }
 
-  private def maintenanceOnTask: Initialize[Task[Int]] = (streams) map {
-    (out) =>
-      client { cli =>
-        out.log.info(
-          dispatch.Http(cli.maintenance(true) as_str)
-        )
-        out.log.info("Maintenance mode enabled.")
-        0
-      }
-  }
+  private def releasesTask: Initialize[Task[Unit]] =
+    (streams) map {
+      (out) =>
+        client { cli =>
+          out.log.info(dispatch.Http(cli.releases().list as_str))
+        }
+    }
 
-  private def maintenanceOffTask: Initialize[Task[Int]] = (streams) map {
-    (out) =>
-      client { cli =>
-        out.log.info(
-          dispatch.Http(cli.maintenance(false) as_str)
-        )
-        out.log.info("Maintenance mode disabled.")
-        0
-      }
-  }
+  private def maintenanceOnTask: Initialize[Task[Unit]] =
+    (streams) map {
+      (out) =>
+        client { cli =>
+          out.log.info(
+            dispatch.Http(cli.maintenance(true) as_str)
+          )
+          out.log.info("Maintenance mode enabled.")
+        }
+    }
 
-  private def localHeroTask: Initialize[Task[Unit]] = (baseDirectory, streams) map {
-    (bd, out) =>
-      out.log.info("Running Procfile process(es). Press any key to stop.")
-      val p = Procman.start(new File(bd, "ProcFile"), out.log)
-      def detectInput() {
-        try { Thread.sleep(1000) } catch { case _: InterruptedException => }
-        if(System.in.available() <= 0) detectInput()
-      }
-      detectInput()
-      p.foreach(_.destroy())
-      out.log.info("Process complete")
-  }
+  private def maintenanceOffTask: Initialize[Task[Unit]] =
+    (streams) map {
+      (out) =>
+        client { cli =>
+          out.log.info(
+            dispatch.Http(cli.maintenance(false) as_str)
+          )
+          out.log.info("Maintenance mode disabled.")
+        }
+    }
 
-  private def psTask: Initialize[Task[Int]] =
+  private def localHeroTask: Initialize[Task[Unit]] =
+    (baseDirectory, streams) map {
+      (bd, out) =>
+        out.log.info("Running Procfile process(es). Press any key to stop.")
+        val p = Procman.start(new File(bd, "ProcFile"), out.log)
+        def detectInput() {
+          try { Thread.sleep(1000) } catch { case _: InterruptedException => }
+          if(System.in.available() <= 0) detectInput()
+        }
+        detectInput()
+        p.foreach(_.destroy())
+        out.log.info("Process complete")
+    }
+
+  private def psTask: Initialize[Task[Unit]] =
     (streams) map {
       (out) =>
         client { cli =>
@@ -382,17 +463,23 @@ object Plugin extends sbt.Plugin {
         }
     }
 
-  private def infoTask: Initialize[Task[Int]] =
+  private def infoTask: Initialize[Task[Unit]] =
     (streams) map {
       (out) =>
         client { cli =>
           out.log.info("Fetching App info")
-          out.log.info(dispatch.Http(cli.info() as_str))
+          dispatch.Http(cli.info() <> { xml =>
+            def attr(name: String) = (xml \\ "app" \ name).text
+            out.log.info("=== %s" format attr("name"))
+            out.log.info("owner: %s" format attr("owner"))
+            out.log.info("web url: %s" format attr("web_url"))
+            out.log.info("git url: %s" format attr("git_url"))
+          })
           0
         }
     }
 
-  private def addonsTask: Initialize[Task[Int]] =
+  private def addonsTask: Initialize[Task[Unit]] =
     (streams) map {
       (out) =>
         client { cli =>
@@ -403,7 +490,7 @@ object Plugin extends sbt.Plugin {
         }
     }
 
-  private def addonsAvailableTask: Initialize[Task[Int]] =
+  private def addonsAvailableTask: Initialize[Task[Unit]] =
     (streams) map {
       (out) =>
         client { cli =>
@@ -434,7 +521,7 @@ object Plugin extends sbt.Plugin {
     }).sortWith(_.compareTo(_) < 0).foreach(log.info(_))
   }
 
-  private def confTask: Initialize[Task[Int]] = (streams) map {
+  private def confTask: Initialize[Task[Unit]] = (streams) map {
     (out) =>
       client { cli =>
         import com.codahale.jerkson.Json._
@@ -442,20 +529,90 @@ object Plugin extends sbt.Plugin {
         printMap(parse[Map[String, String]](
           dispatch.Http(cli.config().show as_str)
         ), out.log)
-        0
       }
   }
 
   // note you can pass --remote name to overrivde
   // heroku's default remote name for multiple envs
   // stanging, production, ect
-  private def createTask: Initialize[Task[Int]] =
-    exec(Heroku.create, "Creating application")
+  // 
+  private def createTask: Initialize[Task[Unit]] =
+    (streams) map {
+      (out) =>
+        client { cli =>
+          out.log.info("Creating remote Heroku application")
+          val app = parse[Map[String, String]](
+            dispatch.Http(cli.create() as_str)
+          )
+          val (webUrl, gitUrl) = dispatch.Http(cli.info(app("name")) <> { xml =>
+            def attr(name: String) = (xml \\ "app" \ name).text
+            (attr("web_url"), attr("git_url"))
+          })
+
+          // fixme: only rec 406?
+          def checkStatus: Unit = {
+            dispatch.Http.x(cli.appStatus(app("name"))) {
+              case (201, _, _) =>
+                out.log.info(
+                  "Created remote Heroku application %s" format app("name")
+                )
+                out.log.info(
+                  "Stack: %s\nCreate Status: %s\nDynos: %s\nWorkers: %s" format(
+                    app("stack"),
+                    app("create_status"),
+                    app("dynos"),
+                    app("workers")))
+             case (code, h, _) =>
+               println("code %s headers %s" format(code, h))
+               Thread.sleep(1000)
+               checkStatus
+            }
+          }
+
+          //checkStatus
+          out.log.info("Created app %s" format app("name"))
+          out.log.info("%s | %s" format(webUrl, gitUrl))
+          val stat = GitClient.addRemote(app("name"))
+          if(stat > 0) out.log.error("Error adding git remote heroku")
+          else out.log.info("Added git remote heroku")
+        }
+    }
+
+  // fixme: refactor
+  private def ask[T](question: String)(f: String => T): T = {
+    print(question)
+    f(readLine)
+  }
+
+  private def destroyTask: Initialize[Task[Unit]] = 
+    (streams) map {
+      (out) =>
+        val confirm = ask(
+          "Are you sure you want to remove this application: [Y/N] ") {
+          _.trim.toLowerCase
+        }
+        if(Seq("n", "no", "nope", "nah") contains confirm) out.log.info(
+          "Cancelled request"
+        ) else if(Seq("y", "yes", "yep", "yea") contains confirm) client { cli =>
+          out.log.info("Destroying remote application")
+          try {
+            dispatch.Http(cli.destroy() as_str)
+            out.log.info("Remote application destroyed")
+            val stat = GitClient.remoteRm("heroku")
+            if(stat > 0) out.log.error("Error removing git remote heroku")
+            else out.log.info("Removed git remote heroku")
+          } catch {
+            case dispatch.StatusCode(404, _) =>
+              out.log.warn("Remote app did not exist")
+          }
+        } else sys.error("unexpected answer %s" format confirm)
+    }
 
   // todo: check for local changes...
   private def pushTask: Initialize[Task[Int]] =
-    exec(GitCli.push("heroku"), "Updating application (this may take a few seconds)",
-         "Check the status of your application with `hero:ps` or `hero:logs`"
+    exec(GitCli.push("heroku"),
+      "Updating application (this may take a few seconds)",
+       "Check the status of your application with `hero:ps` or `hero:logs`"
     )
 
   private def procfileTask: Initialize[Task[File]] =
