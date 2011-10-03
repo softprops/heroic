@@ -61,29 +61,41 @@ Heroku also exposes certain runtime properties as env vars. Of note, your Main c
 
 ### Client Settings
 
+
 (More will be added in the in the future)
 
-     hero:foreman    # starts up your app in an emulated Heroku environment
+     hero:addons     # lists installed addons for app
+     hero:addons-available # lists all available addons
+     hero:addons-add # installs an addon
+     hero:addons-rm  # uninstalls an addon
      hero:create     # shells out to heroku to create a new `stack`. This will add a git remote named heroku to your
                      # git repo
+     hero:collaborators # lists all collabs
+     hero:collaborators-add # adds a collab
+     hero:collaborators-rm  # removes a collab
      hero:conf       # lists remote config (env) vars
      hero:conf-add   # adds a remote config var
      hero:conf-rm    # removes a remote config var
-     hero:push       # shells out to heroku to push your application ((re)deploy)
-     hero:ps         # shells out the heroku to check your remote process
-     hero:logs       # shells out to heroku and tails the remote logs
+     hero:destroy    # deletes remote heroku application
+     hero:domains    # lists heroku domains
+     hero:domains-add # adds heroku domain
+     hero:domains-rm # removes heroku domain
+     hero:push       # pushes application to heroku
+     hero:ps         # fetches remote process info
+     hero:local-hero # runs local instance of app based on procfile definition
+     hero:logs       # fetches remote log info
      hero:addons     # lists current Heroku addons
      hero:addons-add # adds a Heroku addon by name (requires payment validation on site)
      hero:addons-rm  # removes a Heroku addon by name
      hero:addons-upgrade # upgrades a target addon
      hero:info       # renders heroku info
+     hero:keys       # lists registered ssh keys
      hero:releases   # listing of all releases
      hero:release-info # provides config info about a target release
      hero:rollback   # rollback to target release
      hero:rename     # changes heroku application name (subdomain)
-     hero:maintenance-on  # enables Heroku maintenance mode
-     hero:maintenance-off # disables Heroku maintenance mode
-     hero:open       # opens hosted application in your browser
+     hero:maint-on   # enables Heroku maintenance mode
+     hero:maint-off  # disables Heroku maintenance mode
 
 * heroku requires a few files in your projects base directly. speficially a pom.xml to hint that the project
   runs on the jvm and optionally a Profile which defines `targets` that you can run through the heroku cli
