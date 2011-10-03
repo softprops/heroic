@@ -9,7 +9,7 @@ Aims to be make deploying scala application as easy as pie. well, as easy as it 
 1. For starters, you'll need an account on [heroku](https://api.heroku.com/signup)
 2. Install the  [heroku gem](https://github.com/heroku/heroku#readme)
 
-    gem install heroku foreman
+    gem install heroku
 
 This will install a command line interfaces for interacting with the heroku api *
 
@@ -22,9 +22,7 @@ This will install a command line interfaces for interacting with the heroku api 
     Email: you@gmail.com
     Password: ****
 
-3. Install the sbt plugin (note not yet pu
-
-For sbt 0.10.*
+3. Install the sbt plugin (note not yet published for sbt 0.11)
 
 Comin' at ya soon
 
@@ -60,7 +58,6 @@ heroku uses [git][git] to manage deployements. In order to deploy your changes y
 Heroku also exposes certain runtime properties as env vars. Of note, your Main class should start a server that listens on a port accessible via `System.getenv("PORT").toInt`.
 
 ### Client Settings
-
 
 (More will be added in the in the future)
 
@@ -105,19 +102,21 @@ Heroku also exposes certain runtime properties as env vars. Of note, your Main c
 To avoid switching contexts, a minimal set of git tasks are provided.
 (These will probably be extracted into a separate plugin in the future)
 
-    git:add       # adds a space-delimited seq of paths to git, defaults to '.'
-    git:status    # renders git porcelain status
-    git:commit    # commits git index with an optional commit msg
-    git:exec      # executes arbitary git command from arguments supplied
+    git:git-add     # adds a space-delimited seq of paths to git, defaults to '.'
+    git:git-diff    # shows git diff
+    git:git-status  # renders git porcelain status
+    git:git-commit  # commits git index with an optional commit msg
+    git:exec        # executes arbitrary git command from arguments supplied
 
 ### tl;dr
 
 1) run once cmds
+   git init
    hero:check-dependencies
    hero:prepare
+   hero:create
 
 2) git commit your code
-   hero:create (run once)
    hero:push
 
 3) keep coding
@@ -128,7 +127,6 @@ To avoid switching contexts, a minimal set of git tasks are provided.
 
 - [mvn scala plugin](http://scala-tools.org/mvnsites/maven-scala-plugin)
 - [heroku gem](https://github.com/heroku/heroku#readme)
-- [foreman gem](https://github.com/ddollar/foreman#readme)
 
 ## todo
 
