@@ -213,7 +213,6 @@ object Plugin extends sbt.Plugin {
               )
               out.log.info("Updated config")
               printMap(updated, out.log)
-              0
             }
           case _ => sys.error("usage: hero:conf-add <key> <val>")
         }
@@ -700,12 +699,6 @@ object Plugin extends sbt.Plugin {
           else out.log.info("Added git remote heroku")
         }
     }
-
-  // fixme: refactor
-  private def ask[T](question: String)(f: String => T): T = {
-    print(question)
-    f(readLine)
-  }
 
   private def destroyTask: Initialize[Task[Unit]] = 
     (streams) map {
