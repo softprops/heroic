@@ -188,7 +188,6 @@ object Plugin extends sbt.Plugin {
            http(cli.logs() >~ { src =>
               src.getLines().foreach(l => out.log.info(l))
             })
-            0
          }
       }
     },
@@ -226,7 +225,6 @@ object Plugin extends sbt.Plugin {
               )
               out.log.info("Updated config")
               printMap(updated, out.log)
-              0
             }
           case _ => sys.error("usage: hero:conf-rm <key>");
         }
@@ -314,7 +312,6 @@ object Plugin extends sbt.Plugin {
               out.log.info(
                 http(cli.releases().show(rel) as_str)
               )
-              0
             }
         }
       }
@@ -328,7 +325,6 @@ object Plugin extends sbt.Plugin {
               out.log.info(
                 http(cli.rollback(to) as_str)
               )
-             0
             }
           case _ => sys.error("usage: hero:rollback <release>")
         }
@@ -595,7 +591,6 @@ object Plugin extends sbt.Plugin {
             out.log.info("web url: %s" format attr("web_url"))
             out.log.info("git url: %s" format attr("git_url"))
           })
-          0
         }
     }
 
@@ -607,7 +602,6 @@ object Plugin extends sbt.Plugin {
           printAddons(parse[List[Map[String, String]]](
             http(cli.addons().show as_str)
           ), out.log)
-          0
         }
     }
 
@@ -618,7 +612,6 @@ object Plugin extends sbt.Plugin {
           printAddons(parse[List[Map[String, String]]](
             http(cli.addons().available as_str)
           ), out.log)
-          0
         }
     }
 
