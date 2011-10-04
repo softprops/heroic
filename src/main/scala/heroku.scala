@@ -159,7 +159,6 @@ object HerokuClient {
       "password" -> password
     ) <:< AppHeaders ++ AcceptJson as_str)
   )
-
 }
 
 

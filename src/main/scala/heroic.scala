@@ -7,6 +7,8 @@ case class Release(env: Map[String, String], pstable: Map[String, String],
                    commit: Option[String], descr: String, addons: Seq[String],
                    created_at: String, user: String, name: String)
 
+case class Proc(ptype: String, cmd: String)
+
 /** Provides Heroku deployment capability.
  *  assumes exported env variables
  *  REPO path to m2 maven repository */
@@ -15,6 +17,7 @@ object Plugin extends sbt.Plugin {
   import HeroKeys._
   import heroic.{Git => GitCli}
   import com.codahale.jerkson.Json._
+  import Prompt._
 
   val stage = TaskKey[Unit]("stage", "Heroku installation hook")
   def stageTask(script: File, procfile: File, slugfile: File) = { /* noop */ }
@@ -24,6 +27,7 @@ object Plugin extends sbt.Plugin {
     val equip = TaskKey[Unit]("equip", "Prepares project for Heroku deployment")
 
     val procfile = TaskKey[File]("procfile", "Writes Heroku Procfile to project base directory")
+    val procs = SettingKey[Seq[Proc]]("procs", "List of procs to include in procfile")
 
     val scriptName = SettingKey[String]("script-name", "Name of script-file")
     val scriptFile = SettingKey[File]("script-file", "Target process for for Heroku web procfile key")
@@ -142,6 +146,7 @@ object Plugin extends sbt.Plugin {
     mainClass in Hero <<= mainClass in Runtime,
     scriptName := "hero",
     script <<= scriptTask,
+    procs <+= (scriptName)(s => Proc("web", "sh target/%s" format s)),
     procfile <<= procfileTask,
     slugIgnored := Seq("src/test"),
     slugIgnore <<= slugIgnoreTask,
@@ -395,7 +400,7 @@ object Plugin extends sbt.Plugin {
               val yn = ask("Are you sure you want to deregister all app keys? [Y/N] ") {
                 _.trim.toLowerCase
               }
-              if(Seq("y", "yes", "yep", "yea") contains yn) {
+              if(Prompt.Okays contains yn) {
                 out.log.info("Deregistering keys")
                 try {
                   out.log.info(http(cli.keys.clear as_str))
@@ -404,7 +409,7 @@ object Plugin extends sbt.Plugin {
                   case dispatch.StatusCode(404, msg) =>
                     out.log.warn(msg)
                 }
-              } else if(Seq("n", "no", "nope", "nah") contains yn) {
+              } else if(Prompt.Nos contains yn) {
                 out.log.info("Canceling request")
               } else sys.error("Unexpected response %s" format yn)
             case Seq(kf) =>
@@ -413,7 +418,7 @@ object Plugin extends sbt.Plugin {
                   val yn = ask("Are you sure you want to deregister this key? [Y/N] ") {
                     _.trim.toLowerCase
                   }
-                  if(Seq("y", "yes", "yep", "yea") contains yn) {
+                  if(Prompt.Okays contains yn) {
                     out.log.info("Deregistering key")
                     try {
                       out.log.info(http(cli.keys.rm(IO.read(f)) as_str))
@@ -422,7 +427,7 @@ object Plugin extends sbt.Plugin {
                       case dispatch.StatusCode(404, msg) =>
                         out.log.warn(msg)
                     }
-                  } else if(Seq("n", "no", "nope", "nah") contains yn) {
+                  } else if(Prompt.Nos contains yn) {
                     out.log.info("Canceling request")
                   } else sys.error("Unexpected response %s" format yn)
                 case f => sys.error("%s does not exist" format f)
@@ -444,10 +449,10 @@ object Plugin extends sbt.Plugin {
     val confirm = ask("Are you sure you want to do this? (y/n) ") {
       _.trim.toLowerCase
     }
-    if(Seq("y", "yes", "yep", "yea") contains confirm) {
+    if(Prompt.Okays contains confirm) {
       log.info(http(client.confirmBilling as_str))
       true
-    } else if (Seq("n", "no", "nope", "nah") contains confirm) false
+    } else if (Prompt.Nos contains confirm) false
     else sys.error("unexpected answer %s" format confirm)
   }
 
@@ -669,7 +674,7 @@ object Plugin extends sbt.Plugin {
 
           // fixme: only rec 406?
           def checkStatus: Unit = {
-            dispatch.Http.x(cli.appStatus(app("name"))) {
+            dispatch.Http.x(cli.appStatus(app("name"))){
               case (201, _, _) =>
                 out.log.info(
                   "Created remote Heroku application %s" format app("name")
@@ -709,9 +714,9 @@ object Plugin extends sbt.Plugin {
           "Are you sure you want to destory this application: [Y/N] ") {
           _.trim.toLowerCase
         }
-        if(Seq("n", "no", "nope", "nah") contains confirm) out.log.info(
+        if(Prompt.Nos contains confirm) out.log.info(
           "Cancelled request"
-        ) else if(Seq("y", "yes", "yep", "yea") contains confirm) client { cli =>
+        ) else if(Prompt.Okays contains confirm) client { cli =>
           out.log.info("Destroying remote application")
           try {
             http(cli.destroy() as_str)
@@ -734,13 +739,13 @@ object Plugin extends sbt.Plugin {
     )
 
   private def procfileTask: Initialize[Task[File]] =
-    (baseDirectory, scriptName, streams) map {
-      (base, scrpt, out) =>    
+    (baseDirectory, procs, streams) map {
+      (base, procs, out) =>    
         new File(base, "Procfile") match {
           case pf if(pf.exists) => pf
           case pf =>
             out.log.info("Writing Procfile")
-            IO.write(pf, Procfile(Seq(("web", "sh target/%s" format scrpt))))
+            IO.write(pf, Procfile(procs))
             pf
         }
     }

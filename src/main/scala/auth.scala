@@ -3,6 +3,7 @@ package heroic
 object Auth {
   import java.io.{File, PrintWriter}
   import com.codahale.jerkson.Json._
+  import Prompt._
 
   def credentials: Option[(String, String)] = store match {
     case f if(f.exists) => io.Source.fromFile(f).getLines.toSeq match {
@@ -73,13 +74,13 @@ object Auth {
       val confirm = ask("Would you like to associate yours now? [Y/N] ") {
         _.toLowerCase.trim
       }
-      if(Seq("y", "yes", "yep", "yea") contains confirm) {
+      if(Prompt.Okays contains confirm) {
         log.info("Registering key %s" format keyFile.get)
         dispatch.Http(
           client.keys.add(sbt.IO.read(keyFile.get)) as_str
         )
         log.info("Registered key")
-      } else if(Seq("n", "no", "nope", "nah") contains confirm) notNow
+      } else if(Prompt.Nos contains confirm) notNow
       else {
         log.warn("did not understand answer %s" format confirm)
         notNow
@@ -90,12 +91,6 @@ object Auth {
       log.warn("""ssh-keygen -t rsa -N "" -f "%s/.ssh/id_rsa"""" format home)
       notNow
     }
-  }
-
-
-  def ask[T](question: String)(f: String => T): T = {
-    print(question)
-    f(readLine)
   }
 
   def store = new File(System.getProperty("user.home"), ".heroku/credentials")

@@ -1,9 +1,9 @@
 package heroic
 
 object Procfile {
-  def apply(tasks: Seq[(String, String)]) =
+  def apply(tasks: Seq[Proc]) =
    (tasks.map {
-     case (task, cmd) => "%s: %s" format(task, cmd)
+     case Proc(task, cmd) => "%s: %s" format(task, cmd)
    }).mkString("\n")
 }
 
