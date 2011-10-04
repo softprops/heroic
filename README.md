@@ -14,6 +14,8 @@ Comin' at ya soon
 
 3. deploy
 
+inside sbt
+
     sbt> hero:auth
     [info] Authenticate with Heroku
     Email: you@somedomain
