@@ -23,7 +23,7 @@ object Plugin extends sbt.Plugin {
     // app settings
     val equip = TaskKey[Unit]("equip", "Prepares project for Heroku deployment")
 
-    val procfile = TaskKey[File]("profile", "Writes Heroku Procfile to project base directory")
+    val procfile = TaskKey[File]("procfile", "Writes Heroku Procfile to project base directory")
 
     val scriptName = SettingKey[String]("script-name", "Name of script-file")
     val scriptFile = SettingKey[File]("script-file", "Target process for for Heroku web procfile key")
