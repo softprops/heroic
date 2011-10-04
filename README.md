@@ -27,6 +27,13 @@ inside sbt
     [info] Registering key ~/.ssh/id_rsa.pub
     [info] Registered key
     [success] Total time: 15 s, completed Oct 4, 2011 12:39:48 AM
+    sbt> hero:equip
+    [info] Writing Procfile
+    [info] Writing .slugignore
+    [info] Updating ...
+    [info] Done updating.
+    [info] Compiling n Scala sources to ...
+    [info] Writing hero file, path/to/target/hero
     sbt> hero:create
     [info] Creating remote Heroku application
     [info] Created app weird-noun-3427
