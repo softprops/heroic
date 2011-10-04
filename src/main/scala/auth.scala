@@ -62,7 +62,7 @@ object Auth {
     val keys = Seq(new File(home, ".ssh/id_rsa.pub"),
                    new File(home, ".ssh/id_dsa.pub"))
     val keyFile = keys.find { _.exists }
-    log.info("Heroku requires an public ssh key")
+    log.info("Heroku requires a public ssh key")
 
     def notNow = {
       log.warn(
@@ -73,9 +73,13 @@ object Auth {
       val confirm = ask("Would you like to associate yours now? [Y/N] ") {
         _.toLowerCase.trim
       }
-      if(Seq("y", "yes", "yep", "yea") contains confirm) dispatch.Http(
-        client.keys.add(sbt.IO.read(keyFile.get)) as_str
-      ) else if(Seq("n", "no", "nope", "nah") contains confirm) notNow
+      if(Seq("y", "yes", "yep", "yea") contains confirm) {
+        log.info("Registering key %s" format keyFile.get)
+        dispatch.Http(
+          client.keys.add(sbt.IO.read(keyFile.get)) as_str
+        )
+        log.info("Registered key")
+      } else if(Seq("n", "no", "nope", "nah") contains confirm) notNow
       else {
         log.warn("did not understand answer %s" format confirm)
         notNow

@@ -104,7 +104,8 @@ case class HerokuClient(user: String, password: String) {
     val ks = api / "user" / "keys" <:< AcceptJson as_!(user, password)
     def show = ks
     def add(key: String) = ks.POST <<(key, "text/ssh-authkey")
-    def rm(key: String) = ks.DELETE / key
+    def rm(key: String) = ks.DELETE / escape(key)
+    def clear = ks.DELETE
   }
 
   def maintenance(on: Boolean, app: String = GitClient.remotes("heroku")) =

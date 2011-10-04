@@ -7,24 +7,40 @@ Aims to be make deploying scala application as easy as pie. well, as easy as it 
 ## install
 
 1. For starters, you'll need an account on [heroku](https://api.heroku.com/signup)
-2. Install the  [heroku gem](https://github.com/heroku/heroku#readme)
 
-    gem install heroku
-
-This will install a command line interfaces for interacting with the heroku api *
-
-* In the future I'd like to mirror the same functionality directly via sbt and drop the ruby dependency
-
-2.5. Be _sure_ to log into Heroku via the cmd line
-
-    $ heroku login
-    Enter your Heroku credentials.
-    Email: you@gmail.com
-    Password: ****
-
-3. Install the sbt plugin (note not yet published for sbt 0.11)
+2. Install the sbt plugin (note not yet published)
 
 Comin' at ya soon
+
+3. deploy
+
+    > hero:auth
+    [info] Authenticate with Heroku
+    Email: you@somedomain
+    Password: ****
+    INF: [console logger] dispatch: api.heroku.com POST /login HTTP/1.1
+    [info] Wrote credentials to ~/.heroku/credentials
+    [info] Heroku requires a public ssh key
+    Would you like to associate yours now? [Y/N] yep
+    [info] Registering key ~/.ssh/id_rsa.pub
+    [info] Registered key
+    [success] Total time: 15 s, completed Oct 4, 2011 12:39:48 AM
+    > hero:create
+    [info] Creating remote Heroku application
+    [info] Created app weird-noun-3427
+    [info] http://weird-noun-3427.herokuapp.com/ | git@heroku.com:weird-noun-3427.git
+    [info] Added git remote heroku
+    [success] Total time: 4 s, completed Oct 4, 2011 12:39:57 AM
+    > hero:info
+    [info] Fetching App info
+    [info] === weird-noun-3427
+    [info] owner: you@somedomain
+    [info] web url: http://weird-noun-3427.herokuapp.com/
+    [info] git url: git@heroku.com:weird-noun-3427.git
+    [success] Total time: 1 s, completed Oct 4, 2011 12:40:03 AM
+    > ...
+    > hero:push
+
 
 To install additional Heroku [addons](http://addons.heroku.com/) you need to [verify](https://api.heroku.com/verify) your account.
 

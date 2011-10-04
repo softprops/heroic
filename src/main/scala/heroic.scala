@@ -383,6 +383,7 @@ object Plugin extends sbt.Plugin {
               file(kf) match {
                 case f if(f.exists) =>
                   out.log.info(http(cli.keys.add(IO.read(f)) as_str))
+                  out.log.info("Registered key")
                 case f => sys.error("%s does not exist" format f)
               }
             case _ => sys.error("usage: hero:keys-add <path-to-key>")
@@ -394,10 +395,40 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
         client { cli =>
           args match {
+            case Seq() =>
+              val yn = ask("Are you sure you want to deregister all app keys? [Y/N] ") {
+                _.trim.toLowerCase
+              }
+              if(Seq("y", "yes", "yep", "yea") contains yn) {
+                out.log.info("Deregistering keys")
+                try {
+                  out.log.info(http(cli.keys.clear as_str))
+                  out.log.info("Deregistered keys")
+                } catch {
+                  case dispatch.StatusCode(404, msg) =>
+                    out.log.warn(msg)
+                }
+              } else if(Seq("n", "no", "nope", "nah") contains yn) {
+                out.log.info("Canceling request")
+              } else sys.error("Unexpected response %s" format yn)
             case Seq(kf) =>
               file(kf) match {
                 case f if(f.exists) =>
-                  out.log.info(http(cli.keys.rm(IO.read(f)) as_str))
+                  val yn = ask("Are you sure you want to deregister this key? [Y/N] ") {
+                    _.trim.toLowerCase
+                  }
+                  if(Seq("y", "yes", "yep", "yea") contains yn) {
+                    out.log.info("Deregistering key")
+                    try {
+                      out.log.info(http(cli.keys.rm(IO.read(f)) as_str))
+                      out.log.info("Deregistered key")
+                    } catch {
+                      case dispatch.StatusCode(404, msg) =>
+                        out.log.warn(msg)
+                    }
+                  } else if(Seq("n", "no", "nope", "nah") contains yn) {
+                    out.log.info("Canceling request")
+                  } else sys.error("Unexpected response %s" format yn)
                 case f => sys.error("%s does not exist" format f)
               }
             case _ => sys.error("usage: hero:keys-rm <path-to-key>")
