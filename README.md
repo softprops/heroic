@@ -14,7 +14,7 @@ Comin' at ya soon
 
 3. deploy
 
-    > hero:auth
+    sbt> hero:auth
     [info] Authenticate with Heroku
     Email: you@somedomain
     Password: ****
@@ -25,21 +25,21 @@ Comin' at ya soon
     [info] Registering key ~/.ssh/id_rsa.pub
     [info] Registered key
     [success] Total time: 15 s, completed Oct 4, 2011 12:39:48 AM
-    > hero:create
+    sbt> hero:create
     [info] Creating remote Heroku application
     [info] Created app weird-noun-3427
     [info] http://weird-noun-3427.herokuapp.com/ | git@heroku.com:weird-noun-3427.git
     [info] Added git remote heroku
     [success] Total time: 4 s, completed Oct 4, 2011 12:39:57 AM
-    > hero:info
+    sbt> hero:info
     [info] Fetching App info
     [info] === weird-noun-3427
     [info] owner: you@somedomain
     [info] web url: http://weird-noun-3427.herokuapp.com/
     [info] git url: git@heroku.com:weird-noun-3427.git
     [success] Total time: 1 s, completed Oct 4, 2011 12:40:03 AM
-    > ...
-    > hero:push
+    sbt> ...
+    sbt> hero:push
 
 
 To install additional Heroku [addons](http://addons.heroku.com/) you need to [verify](https://api.heroku.com/verify) your account.
