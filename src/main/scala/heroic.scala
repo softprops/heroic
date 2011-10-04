@@ -16,50 +16,65 @@ object Plugin extends sbt.Plugin {
   import heroic.{Git => GitCli}
   import com.codahale.jerkson.Json._
 
+  val stage = TaskKey[Unit]("stage", "Heroku installation hook")
+  def stageTask(script: File, procfile: File, slugfile: File) = { /* noop */ }
 
   object HeroKeys {
-    // pgk settings
-    val prepare = TaskKey[Unit]("prepare", "Prepares project for Heroku deployment")
+    // app settings
+    val equip = TaskKey[Unit]("equip", "Prepares project for Heroku deployment")
+
     val procfile = TaskKey[File]("profile", "Writes Heroku Procfile to project base directory")
-    val main = TaskKey[Option[String]]("main", "Target Main class to run")
-    val script = TaskKey[File]("script", "Generates driver script")
-    val checkDependencies = TaskKey[Boolean]("check-dependencies", "Checks to see if required dependencies are installed")
-    val scriptName = SettingKey[String]("script-name", "Name of the generated driver script")
-    val pom = TaskKey[File]("pom", "Generates and copies project pom to project base")
+
+    val scriptName = SettingKey[String]("script-name", "Name of script-file")
+    val scriptFile = SettingKey[File]("script-file", "Target process for for Heroku web procfile key")
+    val script = TaskKey[File]("script", "Generates script-file")
+
     val slugIgnored = SettingKey[Seq[String]]("slug-ignored", "List of items to ignore when transfering application")
     val slugIgnore = TaskKey[File]("slug-ignore", "Generates a Heroku .slugignore file in the base directory")
-
+    
     // client settings
 
-    val localHero = TaskKey[Unit]("local-hero", "Starts a local Heroku env")
+    val checkDependencies = TaskKey[Boolean]("check-dependencies", "Checks to see if required dependencies are installed")
 
-    // heroku gem
+    val localHero = TaskKey[Unit]("local-hero", "Starts a local emulated Heroku env")
+
+    // heroku api
+
+    val auth = TaskKey[Unit]("auth", "Get or acquires heroku credentials")
+
     val collaborators = TaskKey[Unit]("collaborators", "Lists Heroku application collaborators")
     val collaboratorsAdd = InputKey[Unit]("collaborators-add", "Adds a Heroku application collaborator by email")
     val collaboratorsRm = InputKey[Unit]("collaborators-rm", "Removes a Heroku application collaborator by email")
+
     val logs = InputKey[Unit]("logs", "Invokes Heroku client logs command")
     val ps = TaskKey[Unit]("ps", "Invokes Heroku client ps command")
     val create = TaskKey[Unit]("create", "Invokes Heroku client create command")
     val destroy = TaskKey[Unit]("destroy", "Deletes remote application")
     val info = TaskKey[Unit]("info", "Displays Heroku deployment info")
+
     val addons = TaskKey[Unit]("addons", "Lists installed Heroku addons")
     val addonsAvailable = TaskKey[Unit]("addons-available", "Lists available Heroku addons")
     val addonsAdd = InputKey[Unit]("addons-add", "Install a Heroku addon by name")
     val addonsRm = InputKey[Unit]("addons-rm", "Uninstall a Heroku addon by name")
     // punt for now
     //val addonsUpgrade = InputKey[Int]("addons-upgrade", "Upgrade an installed Heroku addon")
+
     val conf = TaskKey[Unit]("conf", "Lists available remote Heroku config properties")
     val confAdd = InputKey[Unit]("conf-add", "Adds a Heroku config property")
     val confRm = InputKey[Unit]("conf-rm", "Removes a Heroku config property")
+
     val maintenanceOff = TaskKey[Unit]("maint-off", "Turns on Heroku Maintenance mode")
     val maintenanceOn = TaskKey[Unit]("maint-on", "Turns off Heroku Maintenance mode")
+
     val releases = TaskKey[Unit]("releases", "Lists all releases")
     val releaseInfo = InputKey[Unit]("release-info", "Shows info about a target release")
     val rollback = InputKey[Unit]("rollback", "Rolls back to a target release")
+
     val rename = InputKey[Unit]("rename", "Give your app a custom subdomain on heroku")
     val domains = TaskKey[Unit]("domains", "List Heroku domains")
     val domainsAdd = InputKey[Int]("domains-add", "Add a Heroku domain")
     val domainsRm = InputKey[Int]("domains-rm", "Removes a Heroku domain")
+
     val keys = TaskKey[Unit]("keys", "Lists Heroku registered keys")
     val keysAdd = InputKey[Unit]("keys-add", "Adds a registed key with heroku")
     val keysRm = InputKey[Unit]("keys-rm", "Removes a registed key with heroku")
@@ -72,7 +87,6 @@ object Plugin extends sbt.Plugin {
     val add = InputKey[Int]("git-add", "Adds an optional list of paths to the git index, defaults to '.'")
     val git = InputKey[Int]("exec", "Executes arbitrary git command")
 
-    val auth = TaskKey[Unit]("auth", "Get or acquires heroku credentials")
   }
 
   val Hero = config("hero")
@@ -115,28 +129,25 @@ object Plugin extends sbt.Plugin {
     }
   ))
 
-  def pkgSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
-    (pomPostProcess in Global) <<= (pomPostProcess in Global, baseDirectory,
-                                    sourceDirectory, scalaVersion)(
-       (pp, base, src, sv) => pp.andThen(
-         includingMvnPlugin(Path.relativeTo(base)(src).get, sv)
-       )
-    ),
-    // should maybe default to (javaOptions in Compile) here?
+  def appSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
     (javaOptions in Hero) <<= (javaOptions in run)(_ match {
       case Nil => Seq("-Xmx256m","-Xss2048k")
       case provided => provided
     }),
-    main <<= (mainClass in Runtime).identity,
+    mainClass in Hero <<= (mainClass in Runtime).identity,
     scriptName := "hero",
     script <<= scriptTask,
+
     procfile <<= procfileTask,
-    pom <<= pomTask,
-    slugIgnored := Seq("build.sbt", "project", "src/test", "target"),
+    
+    slugIgnored := Seq("src/test"),
     slugIgnore <<= slugIgnoreTask,
-    prepare <<= Seq(script, procfile, pom, slugIgnore).dependOn,
-    checkDependencies <<= checkDependenciesTask
+    
+    stage in Compile <<= (script, procfile, slugIgnore) map stageTask,
+
+    equip <<= (stage in Compile).identity
   ))
+
 
   def authTask: Initialize[Task[Unit]] =
     (streams) map {
@@ -144,6 +155,7 @@ object Plugin extends sbt.Plugin {
     }
 
   def clientSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
+    checkDependencies <<= checkDependenciesTask,
     collaborators <<= collaboratorsTask,
     collaboratorsAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
@@ -343,7 +355,6 @@ object Plugin extends sbt.Plugin {
                 case dispatch.StatusCode(406, msg) =>
                   out.log.warn("Fail to rename app. %s" format msg)
               }
-              0
             }
           case _ => sys.error("usage: hero:rename <new-subdomain>")
         }
@@ -700,20 +711,14 @@ object Plugin extends sbt.Plugin {
 
   private def procfileTask: Initialize[Task[File]] =
     (baseDirectory, scriptName, streams) map {
-      (base, scrpt, out) =>
-        out.log.info("Writing Procfile")
-        val pf = new java.io.File(base, "Procfile")
-        IO.write(pf, Procfile(Seq(("web", "sh script/%s" format scrpt))))
-        pf
-    }
-
-  private def pomTask: Initialize[Task[File]] =
-    (baseDirectory, makePom, pomPostProcess, streams) map {
-      (base, pom, postPom, out) =>
-        out.log.info("Copying %s to pom.xml" format pom)
-        val pf = new java.io.File(base, "pom.xml")
-        IO.copyFile(pom, pf)
-        pf
+      (base, scrpt, out) =>    
+        new File(base, "Procfile") match {
+          case pf if(pf.exists) => pf
+          case pf =>
+            out.log.info("Writing Procfile")
+            IO.write(pf, Procfile(Seq(("web", "sh target/%s" format scrpt))))
+            pf
+        }
     }
 
   /* http://devcenter.heroku.com/articles/slug-compiler
@@ -723,12 +728,13 @@ object Plugin extends sbt.Plugin {
   private def slugIgnoreTask: Initialize[Task[File]] =
     (baseDirectory, slugIgnored, streams) map {
       (base, ignores, out) =>
-        val f = new java.io.File(base, ".slugignore")
-        if (!f.exists) {
-          f.createNewFile
+        new java.io.File(base, ".slugignore") match {
+          case si if(si.exists) => si
+          case si =>
+            out.log.info("Writing .slugignore")
+            IO.write(si, ignores.mkString("\n"))
+            si
         }
-        IO.write(f, ignores.mkString("\n"))
-        f
     }
 
   private def checkDependenciesTask: Initialize[Task[Boolean]] =
@@ -751,123 +757,26 @@ object Plugin extends sbt.Plugin {
     }
 
   private def scriptTask: Initialize[Task[File]] =
-    (main, streams, scalaVersion, fullClasspath in Runtime, baseDirectory,
-     moduleSettings, scriptName, javaOptions in Hero, scalaInstance) map {
-      (main, out, sv, cp, base, mod, scriptName, jvmOpts, si) => main match {
+    (mainClass in Hero, streams, fullClasspath in Runtime, baseDirectory,
+      target, scriptName, javaOptions in Hero) map {
+      (main, out, cp, bd, target, sn, jvmOpts) => main match {
         case Some(mainCls) =>
 
-          val IvyCachedParts = """(.*[.]ivy2/cache)/(\S+)/(\S+)/(\S+)/(\S+)[.]jar""".r
-          val IvyCached = """(.*[.]ivy2/cache/\S+/\S+/\S+/\S+[.]jar)""".r
-          val ScalaStdLib = """.*/boot/scala-(\S+)/lib/scala-library.jar""".r
-          val TargetClasses = """.*/target/scala-(\S+)/classes""".r
-          val MvnScalaStdLib = """org/scala-lang/scala-library/%s/scala-library-%s.jar"""
-
-          def mvnize(ivy: String) = ivy match {
-             case IvyCachedParts(_, org, name, pkging, artifact) =>
-               "%s/%s/%s/%s.jar" format(
-                 org.replaceAll("[.]", java.io.File.separator),
-                 name,
-                 artifact.split("-").last,
-                 artifact
-             )
-             case notInIvy => sys.error("not supported %s" format notInIvy)
-          }
-
-          /* Hope for a moduleSetting that provides a moduleId
-            https://github.com/harrah/xsbt/blob/0.10/ivy/IvyConfigurations.scala#L51-73 */
-          // 0.10 as one fewer arguments
-          val mid = mod match {
-            case InlineConfiguration(id, _, _, _, _, _, _, _) => id
-            case EmptyConfiguration(id, _, _, _) => id
-            case _ => sys.error("This task requires a module id")
-          }
-
-          /* https://github.com/harrah/xsbt/blob/0.10/ivy/IvyInterface.scala#L12 */
-          val (org, name, version) = (mid.organization, mid.name, mid.revision)
-          val projectJar = "%s/%s_%s/%s/%s_%s-%s.jar".format(
-            org.replaceAll("[.]","/"),
-            name, sv, version, name, sv, version
-          )
-          val cpElems = cp.map(_.data.getPath).flatMap({
-              case IvyCached(jar) => Some(mvnize(jar))
-              case ScalaStdLib(vers) if(vers == sv) => None
-              case TargetClasses(scvers) if(scvers == si.actualVersion) => None
-              case r =>
-                out.log.info("possibly leaving out cp resource %s." format r)
-                None
-            }) ++ Seq(
-              MvnScalaStdLib.format(sv, sv),
-              projectJar
-            )
-
-          cpElems.foreach(e => out.log.debug("incl %s" format e))
-          val scriptBody = Script(mainCls, cpElems, jvmOpts)
-
-          out.log.info("Writing process runner, script/%s" format scriptName)
-          val sf = new java.io.File(base, "script/%s" format scriptName)
+          val scriptBody = Script(mainCls, cp.files map { f =>
+            IO.relativize(bd, f) match {
+              case Some(rel) => rel
+              case _ => f.getAbsolutePath
+            }
+          }, jvmOpts)
+          val sf = new File(target, sn)
+          out.log.info("Writing hero file, %s" format sf)
           IO.write(sf, scriptBody)
+          sf.setExecutable(true)
           sf
 
         case _ => sys.error("Main class required")
       }
     }
 
-  private def includingMvnPlugin(srcPath: String, scalaVersion: String)(pom: xml.Node) = {
-    import scala.xml._
-    import transform._
-
-    def adopt(parent: Node, kid: Node) = parent match {
-      case Elem(prefix, label, attrs, scope, kids @ _*) =>
-        Elem(prefix, label, attrs, scope, kids ++ kid : _*)
-      case _ => sys.error("Only elements can adopt")
-    }
-
-    object EnsureEncoding extends RewriteRule {
-      override def transform(n: Node) = n match {
-        case proj@Elem(_, "project", _, _, _*) if((proj \ "properties") isEmpty) =>
-          adopt(
-            proj,
-            <properties>
-              <project.build.sourceEncoding>
-                UTF-8
-              </project.build.sourceEncoding>
-              <project.reporting.outputEncoding>
-                UTF-8
-              </project.reporting.outputEncoding>
-            </properties>
-          )
-        case node => node
-      }
-    }
-
-    object AddBuild extends RewriteRule {
-      override def transform(n: Node) = n match {
-        case proj@Elem(_, "project", _, _, _*) if((proj \ "build") isEmpty) =>
-          adopt(
-            proj,
-            <build>
-              <sourceDirectory>{srcPath}</sourceDirectory>
-                <plugins>
-                  <plugin>
-                   <groupId>org.scala-tools</groupId>
-                   <artifactId>maven-scala-plugin</artifactId>
-                   <version>2.14.1</version>
-                   <configuration>
-                    <scalaVersion>{scalaVersion}</scalaVersion>
-                   </configuration>
-                  </plugin>
-              </plugins>
-            </build>
-          )
-        case node => node
-      }
-    }
-
-    // todo: my test build was sparse
-    // handling of other cases would make this
-    // much more robust :)
-    new RuleTransformer(AddBuild, EnsureEncoding)(pom)
-  }
-
-  def heroicSettings: Seq[Setting[_]] = pkgSettings ++ clientSettings ++ gitSettings
+  def heroicSettings: Seq[Setting[_]] = appSettings ++ clientSettings ++ gitSettings
 }

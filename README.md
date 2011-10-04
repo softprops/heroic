@@ -38,20 +38,15 @@ You can verify that they are installed locally with the setting
 
 ### Package settings
 
-    hero:check-dependencies # tests to see if all required dependencies are resolvable
-    hero:main     # uses sbt's mainClass to task to resolve a main class
-    hero:script-name # name of the driver script generated
-    hero:script   # generates a driver script to run on heroku based on your project's mainClass resolution
-    hero:pom      # copies over target pom to pom.xml under base directory including scala mvn plugin
-    hero:procfile # generates heroku Procfile
-    hero:slug-ignore # generates a default .slugignore file ignoring your src/test and project dirs by default
-    hero:slug-ignored # seq of paths to ignore in .slugignore file, defaults to Seq(project, src/test, target)
-    hero:jvm-opts # a seq of jvm options to start your app with
-    hero:prepare  # prepares project for heroku deployment
-    hero:create   # creates an instance of your application on hero (you must commit your code to a git repository first)
-    hero:logs     # shows the current remote logs for your application
-    hero:ps       # shows your apps remote process info
-    hero:push     # pushes an updated copy of your app to Heroku
+    hero:equip        # Prepares project for Heroku deployment
+    hero:procfile     # Writes Heroku Procfile to project base directory
+    hero:scriptName   # Name of script-file
+    hero:scriptFile   # Target process for Heroku web profile key
+    hero:script       # Generates script-file
+    hero:slugIgnored  # List of items to ignore when transfering application
+    hero:slugIgnore   # Generates a Heroku .slugignore file in the base directory
+    hero:main-class    # uses sbt's mainClass to task to resolve a main class
+    hero:java-options # seq of java options to use in script
 
 heroku uses [git][git] to manage deployements. In order to deploy your changes you need to first commit them.
 
@@ -61,6 +56,7 @@ Heroku also exposes certain runtime properties as env vars. Of note, your Main c
 
 (More will be added in the in the future)
 
+     hero:check-dependencies # tests to see if all required dependencies are resolvable
      hero:addons     # lists installed addons for app
      hero:addons-available # lists all available addons
      hero:addons-add # installs an addon
@@ -111,13 +107,13 @@ To avoid switching contexts, a minimal set of git tasks are provided.
 ### tl;dr
 
 1) run once cmds
-   git init
-   hero:check-dependencies
-   hero:prepare
-   hero:create
+   $ git init
+   sbt> hero:check-dependencies
+   sbt> hero:equip
+   sbt> hero:create
 
 2) git commit your code
-   hero:push
+   sbt> hero:push
 
 3) keep coding
 
@@ -131,8 +127,6 @@ To avoid switching contexts, a minimal set of git tasks are provided.
 ## todo
 
 - cache locally what I know doesn't change. (every client call is a remote api call)
-- pass logger into base cmd to debug log all executed cmds
-- fork where it makes sense
 
 Doug Tangren (softprops) 2011
 
