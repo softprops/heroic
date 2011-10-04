@@ -6,6 +6,8 @@ case class HerokuClient(user: String, password: String) {
   import dispatch._
   import Http._
 
+  val utf8 = java.nio.charset.Charset.forName("utf-8")
+
   lazy val api = :/("api.heroku.com").secure <:< AppHeaders
 
   lazy val Hcredentials = Map(
@@ -14,7 +16,7 @@ case class HerokuClient(user: String, password: String) {
   )
 
   private def escape(raw: String) =
-    java.net.URLEncoder.encode(raw).replaceAll(
+    java.net.URLEncoder.encode(raw, utf8.name()).replaceAll(
       "[.]", "%2E"
     )
 

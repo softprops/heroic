@@ -98,6 +98,11 @@ object Plugin extends sbt.Plugin {
       case _ => sys.error("Not authenticated. Try hero:auth")
     }
 
+  private def http[T](hand: dispatch.Handler[T]): T = {
+    val h = new dispatch.Http with dispatch.HttpsLeniency with dispatch.NoLogging
+    h(hand)
+  }
+
   def gitSettings: Seq[Setting[_]] = inConfig(Git)(Seq(
     diff <<= diffTask,
     status <<= statusTask,
@@ -134,25 +139,16 @@ object Plugin extends sbt.Plugin {
       case Nil => Seq("-Xmx256m","-Xss2048k")
       case provided => provided
     }),
-    mainClass in Hero <<= (mainClass in Runtime).identity,
+    mainClass in Hero <<= mainClass in Runtime,
     scriptName := "hero",
     script <<= scriptTask,
-
     procfile <<= procfileTask,
-    
     slugIgnored := Seq("src/test"),
     slugIgnore <<= slugIgnoreTask,
-    
     stage in Compile <<= (script, procfile, slugIgnore) map stageTask,
-
-    equip <<= (stage in Compile).identity
+    equip <<= stage in Compile
   ))
 
-
-  def authTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) => Auth.acquireCredentials(out.log)
-    }
 
   def clientSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
     checkDependencies <<= checkDependenciesTask,
@@ -163,7 +159,7 @@ object Plugin extends sbt.Plugin {
           case Seq(email) =>
             client { cli =>
               out.log.info(
-                dispatch.Http(cli.collaborators().add(email) as_str)
+                http(cli.collaborators().add(email) as_str)
               )
            }
           case _ => sys.error("usage hero:collaborators-add <email>")
@@ -176,7 +172,7 @@ object Plugin extends sbt.Plugin {
           case Seq(email) =>
             client { cli =>
               out.log.info(
-                dispatch.Http(cli.collaborators().rm(email) as_str)
+                http(cli.collaborators().rm(email) as_str)
               )
            }
           case _ => sys.error("usage hero:collaborators-rm <email>")
@@ -189,7 +185,6 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
          client { cli =>
            out.log.info("Fetching recent remote logs")
-           val http = new dispatch.Http with dispatch.HttpsLeniency
            http(cli.logs() >~ { src =>
               src.getLines().foreach(l => out.log.info(l))
             })
@@ -210,7 +205,7 @@ object Plugin extends sbt.Plugin {
             client { cli =>
               out.log.info("assigning config var %s to %s" format(key, value))
               val updated = parse[Map[String, String]](
-                dispatch.Http(cli.config().add(key, value) as_str)
+                http(cli.config().add(key, value) as_str)
               )
               out.log.info("Updated config")
               printMap(updated, out.log)
@@ -227,7 +222,7 @@ object Plugin extends sbt.Plugin {
             client { cli =>
               out.log.info("removing config var %s" format key)
               val updated = parse[Map[String, String]](
-                dispatch.Http(cli.config().rm(key) as_str)
+                http(cli.config().rm(key) as_str)
               )
               out.log.info("Updated config")
               printMap(updated, out.log)
@@ -247,7 +242,7 @@ object Plugin extends sbt.Plugin {
               out.log.info("Requesting addon")
               try {
                 val ao = parse[Map[String, String]](
-                  dispatch.Http(cli.addons().add(feature) as_str)
+                  http(cli.addons().add(feature) as_str)
                 )
                 if(ao("status").equals("Installed")) {
                   out.log.info("addon %s installed" format feature)
@@ -283,7 +278,7 @@ object Plugin extends sbt.Plugin {
             client { cli =>
               out.log.info("Requesting addon removal")
               try {
-                dispatch.Http(cli.addons().rm(feature) >|)
+                http(cli.addons().rm(feature) >|)
                 out.log.info("Removed addon %s" format feature)
               } catch {
                 case dispatch.StatusCode(422, msg) =>
@@ -317,7 +312,7 @@ object Plugin extends sbt.Plugin {
             out.log.info("Fetching release listing")
             client { cli =>
               out.log.info(
-                dispatch.Http(cli.releases().show(rel) as_str)
+                http(cli.releases().show(rel) as_str)
               )
               0
             }
@@ -331,7 +326,7 @@ object Plugin extends sbt.Plugin {
             client { cli =>
               out.log.info("Rolling back release")
               out.log.info(
-                dispatch.Http(cli.rollback(to) as_str)
+                http(cli.rollback(to) as_str)
               )
              0
             }
@@ -348,7 +343,7 @@ object Plugin extends sbt.Plugin {
               out.log.info("Requesting subdomain")
               try {
                 out.log.info(
-                  dispatch.Http(cli.rename(to) as_str)
+                  http(cli.rename(to) as_str)
                 )
                 // todo. need to rename remote if successfull
               } catch {
@@ -387,7 +382,7 @@ object Plugin extends sbt.Plugin {
             case Seq(kf) =>
               file(kf) match {
                 case f if(f.exists) =>
-                  out.log.info(dispatch.Http(cli.keys.add(IO.read(f)) as_str))
+                  out.log.info(http(cli.keys.add(IO.read(f)) as_str))
                 case f => sys.error("%s does not exist" format f)
               }
             case _ => sys.error("usage: hero:keys-add <path-to-key>")
@@ -402,7 +397,7 @@ object Plugin extends sbt.Plugin {
             case Seq(kf) =>
               file(kf) match {
                 case f if(f.exists) =>
-                  out.log.info(dispatch.Http(cli.keys.rm(IO.read(f)) as_str))
+                  out.log.info(http(cli.keys.rm(IO.read(f)) as_str))
                 case f => sys.error("%s does not exist" format f)
               }
             case _ => sys.error("usage: hero:keys-rm <path-to-key>")
@@ -423,11 +418,16 @@ object Plugin extends sbt.Plugin {
       _.trim.toLowerCase
     }
     if(Seq("y", "yes", "yep", "yea") contains confirm) {
-      log.info(dispatch.Http(client.confirmBilling as_str))
+      log.info(http(client.confirmBilling as_str))
       true
     } else if (Seq("n", "no", "nope", "nah") contains confirm) false
     else sys.error("unexpected answer %s" format confirm)
   }
+
+  def authTask: Initialize[Task[Unit]] =
+    (streams) map {
+      (out) => Auth.acquireCredentials(out.log)
+    }
 
   private def statusTask: Initialize[Task[Int]] =
     exec(GitCli.status())
@@ -448,7 +448,7 @@ object Plugin extends sbt.Plugin {
     (streams) map {
       (out) =>
         client { cli =>
-          dispatch.Http(cli.keys.show <> { xml =>
+          http(cli.keys.show <> { xml =>
             (xml \\ "keys" \\ "key").map(_ \ "contents" text).foreach(
               out.log.info(_)
             )
@@ -460,7 +460,7 @@ object Plugin extends sbt.Plugin {
     (streams) map {
       (out) =>
         client { cli =>
-          out.log.info(dispatch.Http(cli.collaborators().show as_str))
+          out.log.info(http(cli.collaborators().show as_str))
         }
     }
 
@@ -468,7 +468,7 @@ object Plugin extends sbt.Plugin {
     (streams) map {
       (out) =>
         client { cli =>
-          out.log.info(dispatch.Http(cli.domains().show as_str))
+          out.log.info(http(cli.domains().show as_str))
         }
     }
 
@@ -492,7 +492,7 @@ object Plugin extends sbt.Plugin {
       (out) =>
         client { cli =>
           val rs = parse[Seq[Release]](
-            dispatch.Http(cli.releases().list as_str)
+            http(cli.releases().list as_str)
           )
           rs.foreach(printRelease(_, out.log))
         }
@@ -503,7 +503,7 @@ object Plugin extends sbt.Plugin {
       (out) =>
         client { cli =>
           out.log.info(
-            dispatch.Http(cli.maintenance(true) as_str)
+            http(cli.maintenance(true) as_str)
           )
           out.log.info("Maintenance mode enabled.")
         }
@@ -514,7 +514,7 @@ object Plugin extends sbt.Plugin {
       (out) =>
         client { cli =>
           out.log.info(
-            dispatch.Http(cli.maintenance(false) as_str)
+            http(cli.maintenance(false) as_str)
           )
           out.log.info("Maintenance mode disabled.")
         }
@@ -540,7 +540,7 @@ object Plugin extends sbt.Plugin {
         client { cli =>
           out.log.info("Fetching process info")
           val px = parse[Seq[Map[String, String]]](
-            dispatch.Http(cli.ps() as_str)
+            http(cli.ps() as_str)
           )
           px.foreach { p =>
             out.log.info(
@@ -557,7 +557,7 @@ object Plugin extends sbt.Plugin {
       (out) =>
         client { cli =>
           out.log.info("Fetching App info")
-          dispatch.Http(cli.info() <> { xml =>
+          http(cli.info() <> { xml =>
             def attr(name: String) = (xml \\ "app" \ name).text
             out.log.info("=== %s" format attr("name"))
             out.log.info("owner: %s" format attr("owner"))
@@ -574,7 +574,7 @@ object Plugin extends sbt.Plugin {
       (out) =>
         client { cli =>
           printAddons(parse[List[Map[String, String]]](
-            dispatch.Http(cli.addons().show as_str)
+            http(cli.addons().show as_str)
           ), out.log)
           0
         }
@@ -585,7 +585,7 @@ object Plugin extends sbt.Plugin {
       (out) =>
         client { cli =>
           printAddons(parse[List[Map[String, String]]](
-            dispatch.Http(cli.addons().available as_str)
+            http(cli.addons().available as_str)
           ), out.log)
           0
         }
@@ -618,7 +618,7 @@ object Plugin extends sbt.Plugin {
         out.log.info("Fetching remote configuration")
         try {
           printMap(parse[Map[String, String]](
-            dispatch.Http(cli.config().show as_str)
+            http(cli.config().show as_str)
           ), out.log)
         } catch {
           case _ => out.log.info("Empty config")
@@ -636,9 +636,9 @@ object Plugin extends sbt.Plugin {
         client { cli =>
           out.log.info("Creating remote Heroku application")
           val app = parse[Map[String, String]](
-            dispatch.Http(cli.create() as_str)
+            http(cli.create() as_str)
           )
-          val (webUrl, gitUrl) = dispatch.Http(cli.info(app("name")) <> { xml =>
+          val (webUrl, gitUrl) = http(cli.info(app("name")) <> { xml =>
             def attr(name: String) = (xml \\ "app" \ name).text
             (attr("web_url"), attr("git_url"))
           })
@@ -690,7 +690,7 @@ object Plugin extends sbt.Plugin {
         ) else if(Seq("y", "yes", "yep", "yea") contains confirm) client { cli =>
           out.log.info("Destroying remote application")
           try {
-            dispatch.Http(cli.destroy() as_str)
+            http(cli.destroy() as_str)
             out.log.info("Remote application destroyed")
             val stat = GitClient.remoteRm("heroku")
             if(stat > 0) out.log.error("Error removing git remote heroku")
