@@ -455,10 +455,11 @@ object Plugin extends sbt.Plugin {
     else sys.error("unexpected answer %s" format confirm)
   }
 
+  def withLog[T](f: Logger => T): Initialize[Task[T]] =
+    (streams) map { o => f(o.log) }
+
   def authTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) => Auth.acquireCredentials(out.log)
-    }
+    withLog(l => Auth.acquireCredentials(l))
 
   private def statusTask: Initialize[Task[Int]] =
     exec(GitCli.status())
@@ -467,40 +468,36 @@ object Plugin extends sbt.Plugin {
     exec(GitCli.diff())
 
   private def exec(pb: => ProcessBuilder, msg: String = "", onSuccess: String = ""): Initialize[Task[Int]] =
-    (streams) map {
-      (out) =>
-        if(!msg.isEmpty) out.log.info(msg)
-        val stat = pb ! out.log
-        if(stat == 0 && !onSuccess.isEmpty) out.log.info(onSuccess)
+    withLog { l =>
+        if(!msg.isEmpty) l.info(msg)
+        val stat = pb ! l
+        if(stat == 0 && !onSuccess.isEmpty) l.info(onSuccess)
         stat
     }
 
   private def keysTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          http(cli.keys.show <> { xml =>
-            (xml \\ "keys" \\ "key").map(_ \ "contents" text).foreach(
-              out.log.info(_)
-            )
-          })
-        }
+    withLog { l =>
+      client { cli =>
+        http(cli.keys.show <> { xml =>
+          (xml \\ "keys" \\ "key").map(_ \ "contents" text).foreach(
+            l.info(_)
+          )
+        })
+      }
     }
 
   private def collaboratorsTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          out.log.info(http(cli.collaborators().show as_str))
-        }
+    withLog { l =>
+      client { cli =>
+        l.info(http(cli.collaborators().show as_str))
+      }
     }
 
   private def domainsTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          out.log.info(http(cli.domains().show as_str))
-        }
+    withLog { l =>
+      client { cli =>
+        l.info(http(cli.domains().show as_str))
+      }
     }
 
  private def printRelease(r: Release, log: Logger, details: Boolean = false) = {
@@ -519,36 +516,33 @@ object Plugin extends sbt.Plugin {
  }
 
   private def releasesTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          val rs = parse[Seq[Release]](
-            http(cli.releases().list as_str)
-          )
-          rs.foreach(printRelease(_, out.log))
-        }
+    withLog { l =>
+      client { cli =>
+        val rs = parse[Seq[Release]](
+          http(cli.releases().list as_str)
+        )
+        rs.foreach(printRelease(_, l))
+      }
     }
 
   private def maintenanceOnTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          out.log.info(
-            http(cli.maintenance(true) as_str)
-          )
-          out.log.info("Maintenance mode enabled.")
-        }
+    withLog { l =>
+      client { cli =>
+        l.info(
+          http(cli.maintenance(true) as_str)
+        )
+        l.info("Maintenance mode enabled.")
+      }
     }
 
   private def maintenanceOffTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          out.log.info(
-            http(cli.maintenance(false) as_str)
-          )
-          out.log.info("Maintenance mode disabled.")
-        }
+    withLog { l =>
+      client { cli =>
+        l.info(
+          http(cli.maintenance(false) as_str)
+        )
+        l.info("Maintenance mode disabled.")
+      }
     }
 
   private def localHeroTask: Initialize[Task[Unit]] =
@@ -566,57 +560,53 @@ object Plugin extends sbt.Plugin {
     }
 
   private def psTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          out.log.info("Fetching process info")
-          val px = parse[Seq[Map[String, String]]](
-            http(cli.ps() as_str)
-          )
-          px.foreach { p =>
-            out.log.info(
-              "%s %s %s" format(
-                p("process"), p("pretty_state"), p("command")
-              )
+    withLog { l =>
+      client { cli =>
+        l.info("Fetching process info")
+        val px = parse[Seq[Map[String, String]]](
+          http(cli.ps() as_str)
+        )
+        px.foreach { p =>
+          l.info(
+            "%s %s %s" format(
+              p("process"), p("pretty_state"), p("command")
             )
-          }
+          )
         }
+      }
     }
 
   private def infoTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          out.log.info("Fetching App info")
-          http(cli.info() <> { xml =>
-            def attr(name: String) = (xml \\ "app" \ name).text
-            out.log.info("=== %s" format attr("name"))
-            out.log.info("owner: %s" format attr("owner"))
-            out.log.info("web url: %s" format attr("web_url"))
-            out.log.info("git url: %s" format attr("git_url"))
-          })
-        }
+    withLog { l =>
+      client { cli =>
+        l.info("Fetching App info")
+        http(cli.info() <> { xml =>
+          def attr(name: String) = (xml \\ "app" \ name).text
+          l.info("=== %s" format attr("name"))
+          l.info("owner: %s" format attr("owner"))
+          l.info("web url: %s" format attr("web_url"))
+          l.info("git url: %s" format attr("git_url"))
+        })
+      }
     }
 
   // todo: make this an input task with a query filter (its a long list!)
   private def addonsTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          printAddons(parse[List[Map[String, String]]](
-            http(cli.addons().show as_str)
-          ), out.log)
-        }
+    withLog { l =>
+      client { cli =>
+        printAddons(parse[List[Map[String, String]]](
+          http(cli.addons().show as_str)
+        ), l)
+      }
     }
 
   private def addonsAvailableTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          printAddons(parse[List[Map[String, String]]](
-            http(cli.addons().available as_str)
-          ), out.log)
-        }
+    withLog { l =>
+      client { cli =>
+        printAddons(parse[List[Map[String, String]]](
+          http(cli.addons().available as_str)
+        ), l)
+      }
     }
 
   private def printMap(m: Map[String, String], log: Logger) = {
@@ -639,17 +629,17 @@ object Plugin extends sbt.Plugin {
     }).sortWith(_.compareTo(_) < 0).foreach(log.info(_))
   }
 
-  private def confTask: Initialize[Task[Unit]] = (streams) map {
-    (out) =>
+  private def confTask: Initialize[Task[Unit]] =
+    withLog { l =>
       client { cli =>
         import com.codahale.jerkson.Json._
-        out.log.info("Fetching remote configuration")
+        l.info("Fetching remote configuration")
         try {
           printMap(parse[Map[String, String]](
             http(cli.config().show as_str)
-          ), out.log)
+          ), l)
         } catch {
-          case _ => out.log.info("Empty config")
+          case _ => l.info("Empty config")
         }
       }
   }
@@ -659,69 +649,67 @@ object Plugin extends sbt.Plugin {
   // stanging, production, ect
   // 
   private def createTask: Initialize[Task[Unit]] =
-    (streams) map {
-      (out) =>
-        client { cli =>
-          out.log.info("Creating remote Heroku application")
-          val app = parse[Map[String, String]](
-            http(cli.create() as_str)
-          )
-          val (webUrl, gitUrl) = http(cli.info(app("name")) <> { xml =>
-            def attr(name: String) = (xml \\ "app" \ name).text
-            (attr("web_url"), attr("git_url"))
-          })
+    withLog { l =>
+      client { cli =>
+        l.info("Creating remote Heroku application")
+        val app = parse[Map[String, String]](
+          http(cli.create() as_str)
+        )
+        val (webUrl, gitUrl) = http(cli.info(app("name")) <> { xml =>
+          def attr(name: String) = (xml \\ "app" \ name).text
+          (attr("web_url"), attr("git_url"))
+        })
 
-          // fixme: only rec 406?
-          def checkStatus: Unit = {
-            dispatch.Http.x(cli.appStatus(app("name"))){
-              case (201, _, _) =>
-                out.log.info(
-                  "Created remote Heroku application %s" format app("name")
-                )
-                out.log.info(
-                  "Stack: %s\nCreate Status: %s\nDynos: %s\nWorkers: %s" format(
-                    app("stack"),
-                    app("create_status"),
-                    app("dynos"),
-                    app("workers")))
-             case (code, h, _) =>
-               println("code %s headers %s" format(code, h))
-               Thread.sleep(1000)
-               checkStatus
-            }
+        // fixme: only rec 406?
+        def checkStatus: Unit = {
+          dispatch.Http.x(cli.appStatus(app("name"))){
+            case (201, _, _) =>
+              l.info(
+                "Created remote Heroku application %s" format app("name")
+              )
+              l.info(
+                "Stack: %s\nCreate Status: %s\nDynos: %s\nWorkers: %s" format(
+                  app("stack"),
+                  app("create_status"),
+                  app("dynos"),
+                  app("workers")))
+            case (code, h, _) =>
+              l.info("code %s headers %s" format(code, h))
+            Thread.sleep(1000)
+            checkStatus
           }
-
-          //checkStatus
-          out.log.info("Created app %s" format app("name"))
-          out.log.info("%s | %s" format(webUrl, gitUrl))
-          val stat = GitClient.addRemote(app("name"))
-          if(stat > 0) out.log.error("Error adding git remote heroku")
-          else out.log.info("Added git remote heroku")
         }
+
+        //checkStatus
+        l.info("Created app %s" format app("name"))
+        l.info("%s | %s" format(webUrl, gitUrl))
+        val stat = GitClient.addRemote(app("name"))
+        if(stat > 0) l.error("Error adding git remote heroku")
+        else l.info("Added git remote heroku")
+      }
     }
 
   private def destroyTask: Initialize[Task[Unit]] = 
-    (streams) map {
-      (out) =>
-        val confirm = ask(
-          "Are you sure you want to destory this application: [Y/N] ") {
-          _.trim.toLowerCase
+    withLog { l =>
+      val confirm = ask(
+        "Are you sure you want to destory this application: [Y/N] ") {
+        _.trim.toLowerCase
+      }
+      if(Prompt.Nos contains confirm) l.info(
+        "Cancelled request"
+      ) else if(Prompt.Okays contains confirm) client { cli =>
+        l.info("Destroying remote application")
+        try {
+          http(cli.destroy() as_str)
+          l.info("Remote application destroyed")
+          val stat = GitClient.remoteRm("heroku")
+          if(stat > 0) l.error("Error removing git remote heroku")
+          else l.info("Removed git remote heroku")
+        } catch {
+          case dispatch.StatusCode(404, _) =>
+            l.warn("Remote app did not exist")
         }
-        if(Prompt.Nos contains confirm) out.log.info(
-          "Cancelled request"
-        ) else if(Prompt.Okays contains confirm) client { cli =>
-          out.log.info("Destroying remote application")
-          try {
-            http(cli.destroy() as_str)
-            out.log.info("Remote application destroyed")
-            val stat = GitClient.remoteRm("heroku")
-            if(stat > 0) out.log.error("Error removing git remote heroku")
-            else out.log.info("Removed git remote heroku")
-          } catch {
-            case dispatch.StatusCode(404, _) =>
-              out.log.warn("Remote app did not exist")
-          }
-        } else sys.error("unexpected answer %s" format confirm)
+      } else sys.error("unexpected answer %s" format confirm)
     }
 
   // todo: check for local changes...
@@ -760,22 +748,21 @@ object Plugin extends sbt.Plugin {
     }
 
   private def checkDependenciesTask: Initialize[Task[Boolean]] =
-    (streams) map {
-      (out) =>
-        val install = (Map.empty[String, Boolean] /: Seq("heroku", "mvn", "git"))(
-          (a,e) =>
-            try {
-              a + (e -> Process("which %s" format(e)).!!.matches(".*%s\\s+".format(e)))
-            } catch {
-              case _ => a + (e -> false)
-            }
-        )
-       install.foreach(_ match {
-         case (cmd, inst) =>
-           if(inst) out.log.info("\033[0;32minstalled\033[0m %s" format cmd)
-           else out.log.warn("\033[0;31mmissing  \033[0m %s" format cmd)
-       })
-       install.filter(!_._2).isEmpty
+    withLog { l =>
+      val install = (Map.empty[String, Boolean] /: Seq("heroku", "mvn", "git"))(
+        (a,e) =>
+          try {
+            a + (e -> Process("which %s" format(e)).!!.matches(".*%s\\s+".format(e)))
+          } catch {
+            case _ => a + (e -> false)
+          }
+      )
+      install.foreach(_ match {
+        case (cmd, inst) =>
+          if(inst) l.info("\033[0;32minstalled\033[0m %s" format cmd)
+          else l.warn("\033[0;31mmissing  \033[0m %s" format cmd)
+      })
+      install.filter(!_._2).isEmpty
     }
 
   private def scriptTask: Initialize[Task[File]] =
