@@ -16,7 +16,7 @@ object Procman {
                                        val clr = c(rand.nextInt(c.size))
                                        s => "%s%s \033[0m" format(clr, s)
                                      } else s => s)
-      case _ => error("malformed proc definition on line %s" format l)
+      case _ => sys.error("Malformed proc definition on line %s" format l)
     }}).toList
     val pad = "%-" + math.max(procs.map(_.ptype.length).sortWith(_>_).last, 6) + "s"
     procs.toList.map { p =>
