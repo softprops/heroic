@@ -33,7 +33,7 @@ object Plugin extends sbt.Plugin {
     val scriptFile = SettingKey[File]("script-file", "Target process for for Heroku web procfile key")
     val script = TaskKey[File]("script", "Generates script-file")
 
-    val slugIgnored = SettingKey[Seq[String]]("slug-ignored", "List of items to ignore when transfering application")
+    val slugIgnored = TaskKey[Seq[String]]("slug-ignored", "List of items to ignore when transfering application")
     val slugIgnore = TaskKey[File]("slug-ignore", "Generates a Heroku .slugignore file in the base directory")
     
     // client settings
@@ -95,6 +95,12 @@ object Plugin extends sbt.Plugin {
   val Hero = config("hero")
   val Git = config("git")
 
+  private def rootDir(state: State) =
+    file(Project.extract(state).structure.root.toURL.getFile)
+
+  private def relativeToRoot(state: State, f: File) =
+    IO.relativize(rootDir(state), f)
+
   private def client[T](f: HerokuClient => T): T =
     Auth.credentials match {
       case Some((user, key)) => f(HerokuClient(user,key))
@@ -147,13 +153,14 @@ object Plugin extends sbt.Plugin {
     script <<= scriptTask,
     procs <<= (state, baseDirectory, target, scriptName) map {
       (state, b, t, s) => {
-        val extracted: Extracted = Project.extract(state)
-        val root = extracted.structure.root
-        Seq(Proc("web", "sh %s/%s" format(IO.relativize(file(root.toURL.getFile), t).get, s)))
+        Seq(Proc("web", "sh %s/%s" format(relativeToRoot(state, t).get, s)))
       }
     },
     procfile <<= procfileTask,
-    slugIgnored := Seq("src/test"),
+    slugIgnored <<= (state, sourceDirectory in Test) map {
+      (state, sd) =>
+        Seq(relativeToRoot(state, sd).get)
+    },
     slugIgnore <<= slugIgnoreTask,
     stage in Compile <<= (script, procfile, slugIgnore) map stageTask,
     equip <<= stage in Compile
@@ -729,8 +736,7 @@ object Plugin extends sbt.Plugin {
   private def procfileTask: Initialize[Task[File]] =
     (state, procs, streams) map {
       (state, procs, out) =>
-        val base = file(Project.extract(state).structure.root.toURL.getFile)
-        new File(base, "Procfile") match {
+        new File(rootDir(state), "Procfile") match {
           case pf if(pf.exists) => pf
           case pf =>
             out.log.info("Writing Procfile")
@@ -744,9 +750,9 @@ object Plugin extends sbt.Plugin {
    the docs say to ignore everything that isn't required to run an
    application.  */
   private def slugIgnoreTask: Initialize[Task[File]] =
-    (baseDirectory, slugIgnored, streams) map {
-      (base, ignores, out) =>
-        new java.io.File(base, ".slugignore") match {
+    (state, slugIgnored, streams) map {
+      (state, ignores, out) =>
+        new java.io.File(rootDir(state), ".slugignore") match {
           case si if(si.exists) => si
           case si =>
             out.log.info("Writing .slugignore")
@@ -778,10 +784,8 @@ object Plugin extends sbt.Plugin {
       target, scriptName, javaOptions in Hero) map {
       (main, out, cp, state, target, sn, jvmOpts) => main match {
         case Some(mainCls) =>
-          // from heroku's point of view, everything is relative to the root of a given project
-          val bd = file(Project.extract(state).structure.root.toURL.getFile)
           val scriptBody = Script(mainCls, cp.files map { f =>
-            IO.relativize(bd, f) match {
+            relativeToRoot(state, f) match {
               case Some(rel) => rel
               case _ => f.getAbsolutePath
             }
