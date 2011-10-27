@@ -16,7 +16,7 @@ object Auth {
   def acquireCredentials(log: sbt.Logger, tries: Int = 0): Unit = {
     log.info("Authenticate with Heroku")
     val email = ask("Email: ") { _.trim }
-    val password = ask("Password: ") { _.trim }
+    val password = askDiscretely("Password: ") { _.trim }
     
     if((email.isEmpty || password.isEmpty) && tries > 2) sys.error("Failed to authenticate")
     else if(email.isEmpty || password.isEmpty) {
@@ -49,7 +49,6 @@ object Auth {
           acquireCredentials(log, tries + 1)
         }
       case e =>
-        e.printStackTrace
         if(tries > 2) sys.error("Failed to authenticate. %s" format e.getMessage)
         else {
           log.warn("Invalid credentials %s" format e.getMessage)
