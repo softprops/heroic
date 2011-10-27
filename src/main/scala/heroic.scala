@@ -190,7 +190,7 @@ object Plugin extends sbt.Plugin {
       }
     },
     auth <<= authTask,
-    localHero <<= localHeroTask,
+    localHero <<= localHeroTask dependsOn(compile in Compile),
     logs <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
          client { cli =>
