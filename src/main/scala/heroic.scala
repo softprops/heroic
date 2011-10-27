@@ -27,7 +27,7 @@ object Plugin extends sbt.Plugin {
     val equip = TaskKey[Unit]("equip", "Prepares project for Heroku deployment")
 
     val procfile = TaskKey[File]("procfile", "Writes Heroku Procfile to project base directory")
-    val procs = SettingKey[Seq[Proc]]("procs", "List of procs to include in procfile")
+    val procs = TaskKey[Seq[Proc]]("procs", "List of procs to include in procfile")
 
     val scriptName = SettingKey[String]("script-name", "Name of script-file")
     val scriptFile = SettingKey[File]("script-file", "Target process for for Heroku web procfile key")
@@ -90,7 +90,6 @@ object Plugin extends sbt.Plugin {
     val commit = InputKey[Int]("git-commit", "Commits a staging area with an optional msg")
     val add = InputKey[Int]("git-add", "Adds an optional list of paths to the git index, defaults to '.'")
     val git = InputKey[Int]("exec", "Executes arbitrary git command")
-
   }
 
   val Hero = config("hero")
@@ -146,7 +145,13 @@ object Plugin extends sbt.Plugin {
     mainClass in Hero <<= mainClass in Runtime,
     scriptName := "hero",
     script <<= scriptTask,
-    procs <+= (scriptName)(s => Proc("web", "sh target/%s" format s)),
+    procs <<= (state, baseDirectory, target, scriptName) map {
+      (state, b, t, s) => {
+        val extracted: Extracted = Project.extract(state)
+        val root = extracted.structure.root
+        Seq(Proc("web", "sh %s/%s" format(IO.relativize(file(root.toURL.getFile), t).get, s)))
+      }
+    },
     procfile <<= procfileTask,
     slugIgnored := Seq("src/test"),
     slugIgnore <<= slugIgnoreTask,
@@ -294,6 +299,7 @@ object Plugin extends sbt.Plugin {
         }
       }
     },
+
     /* addonsUpgrade <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         args match {
@@ -391,7 +397,7 @@ object Plugin extends sbt.Plugin {
         }
       }
     },
-     keysRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    keysRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         client { cli =>
           args match {
@@ -546,9 +552,10 @@ object Plugin extends sbt.Plugin {
     }
 
   private def localHeroTask: Initialize[Task[Unit]] =
-    (baseDirectory, streams) map {
-      (bd, out) =>
+    (state, streams) map {
+      (state, out) =>
         out.log.info("Running Procfile process(es). Press any key to stop.")
+        val bd = file(Project.extract(state).structure.root.toURL.getFile)
         val p = Procman.start(new File(bd, "ProcFile"), out.log)
         def detectInput() {
           try { Thread.sleep(1000) } catch { case _: InterruptedException => }
@@ -644,7 +651,7 @@ object Plugin extends sbt.Plugin {
       }
   }
 
-  // note you can pass --remote name to overrivde
+  // note you can pass --remote name to override
   // heroku's default remote name for multiple envs
   // stanging, production, ect
   // 
@@ -720,8 +727,9 @@ object Plugin extends sbt.Plugin {
     )
 
   private def procfileTask: Initialize[Task[File]] =
-    (baseDirectory, procs, streams) map {
-      (base, procs, out) =>    
+    (state, procs, streams) map {
+      (state, procs, out) =>
+        val base = file(Project.extract(state).structure.root.toURL.getFile)
         new File(base, "Procfile") match {
           case pf if(pf.exists) => pf
           case pf =>
@@ -749,7 +757,7 @@ object Plugin extends sbt.Plugin {
 
   private def checkDependenciesTask: Initialize[Task[Boolean]] =
     withLog { l =>
-      val install = (Map.empty[String, Boolean] /: Seq("heroku", "mvn", "git"))(
+      val install = (Map.empty[String, Boolean] /: Seq("heroku", "git"))(
         (a,e) =>
           try {
             a + (e -> Process("which %s" format(e)).!!.matches(".*%s\\s+".format(e)))
@@ -766,11 +774,12 @@ object Plugin extends sbt.Plugin {
     }
 
   private def scriptTask: Initialize[Task[File]] =
-    (mainClass in Hero, streams, fullClasspath in Runtime, baseDirectory,
+    (mainClass in Hero, streams, fullClasspath in Runtime, state,
       target, scriptName, javaOptions in Hero) map {
-      (main, out, cp, bd, target, sn, jvmOpts) => main match {
+      (main, out, cp, state, target, sn, jvmOpts) => main match {
         case Some(mainCls) =>
-
+          // from heroku's point of view, everything is relative to the root of a given project
+          val bd = file(Project.extract(state).structure.root.toURL.getFile)
           val scriptBody = Script(mainCls, cp.files map { f =>
             IO.relativize(bd, f) match {
               case Some(rel) => rel
