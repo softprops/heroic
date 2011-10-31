@@ -80,6 +80,7 @@ Heroku also exposes certain runtime properties as env vars. Of note, your Main c
 ### Client Settings
 
 (More will be added in the in the future)
+Note: This plugin supports multiple deployment environments (i.e. multiple Heroku remotes) The default Heroku env is named heroku. A common pattern for application development is to publish to a staging env before deploying to production. You can create a named Heroku env with `hero:create <env>`. The arguments of the keys below will default the the heroku env. Simply use your own env name when modifying that env (`hero.conf-add <env> <key> <val>`)
 
      hero:check-dependencies # tests to see if all required dependencies are resolvable
      hero:addons     # lists installed addons for app

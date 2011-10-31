@@ -20,7 +20,9 @@ case class HerokuClient(user: String, password: String) {
       "[.]", "%2E"
     )
 
-  def addons(app: String = GitClient.remotes("heroku")) = new {
+  def addons(remote: String = DefaultRemote) = new {
+    val app = requireApp(remote)
+
     private def all = api / "addons" <:< AcceptJson as_!(user, password)
     private def mine = api / "apps" / app / "addons" <:< AcceptJson as_!(
       user, password
@@ -37,10 +39,13 @@ case class HerokuClient(user: String, password: String) {
   }
 
   // created is inferred from a 201 http status 
-  def appStatus(app: String = GitClient.remotes("heroku")) =
-    api.PUT / "apps" / app / "status" <:< Map("Accept"->"text/plain") as_!(user, password)
+  def appStatus(remote: String = DefaultRemote) = requireApp(remote) match {
+    case app =>
+      api.PUT / "apps" / app / "status" <:< Map("Accept"->"text/plain") as_!(user, password)
+  }
 
-  def collaborators(app: String = GitClient.remotes("heroku")) = new {
+  def collaborators(remote: String = DefaultRemote) = new {
+    val app = requireApp(remote)
     private def collab = api / "apps" / app / "collaborators" <:< AcceptJson as_!(
       user, password
     )
@@ -52,7 +57,8 @@ case class HerokuClient(user: String, password: String) {
   }
 
    /* more info @ http://devcenter.heroku.com/articles/config-vars */
-  def config(app: String = GitClient.remotes("heroku")) = new {
+  def config(remote: String = DefaultRemote) = new {
+    val app = requireApp(remote)
     private def c = api / "apps" / app / "config_vars" <:< AcceptJson as_!(user, password)
     def show = c
     def clear = c.DELETE
@@ -69,26 +75,33 @@ case class HerokuClient(user: String, password: String) {
 
   // todo: can optionally post with a name
   // more info @ http://devcenter.heroku.com/articles/multiple-environments
-  def create(remote: String = "heroku", stack: String = "cedar") =
+
+  def create(remote: String = DefaultRemote, stack: String = DefaultStack) =
     (api.POST / "apps" <:< AcceptJson as_!(user, password)) << Map(
       "app[stack]" -> stack
     )
 
-  def destroy(app: String = GitClient.remotes("heroku")) =
-    api.DELETE / "apps" / app <:< AcceptJson as_!(user, password)
+  def destroy(remote: String = DefaultRemote) = requireApp(remote) match {
+    case app =>
+      api.DELETE / "apps" / app <:< AcceptJson as_!(user, password)
+  }
 
-  def domains(app: String = GitClient.remotes("heroku")) = new {
+  def domains(remote: String = DefaultRemote) = new {
+    val app = requireApp(remote)
     def show = api / "apps" / app / "domains" <:< AcceptJson as_!(user, password)
     // def add
     // def rm
   }
 
-  def info(app: String = GitClient.remotes("heroku")) =
-    api / "apps" / app <:< AcceptJson as_!(user, password)
+  def info(remote: String = DefaultRemote) = requireApp(remote) match {
+    case app =>
+      api / "apps" / app <:< AcceptJson as_!(user, password)
+  }
 
    /* more info @ http://devcenter.heroku.com/articles/logging */
   /* todo drains @ http://devcenter.heroku.com/articles/logging#syslog_drains */
-  def logs(app: String = GitClient.remotes("heroku")) = {
+  def logs(remote: String = DefaultRemote) = {
+    val app = requireApp(remote)
     val base = api / "apps" / app  / "logs" <:< AcceptJson as_!(user, password)
     val uri = Http(base <<? Map(
       "logplex" -> "true"
@@ -97,8 +110,10 @@ case class HerokuClient(user: String, password: String) {
     else dispatch.url(uri)
   }
 
-  def cronLogs(app: String = GitClient.remotes("heroku")) = 
-    api / "apps" / app / "cron_logs" <:< AcceptJson as_!(user, password)
+  def cronLogs(remote: String = DefaultRemote) = requireApp(remote) match {
+    case app =>
+      api / "apps" / app / "cron_logs" <:< AcceptJson as_!(user, password)
+  }
 
   def keys = new {
     val ks = api / "user" / "keys" <:< AcceptJson as_!(user, password)
@@ -108,16 +123,21 @@ case class HerokuClient(user: String, password: String) {
     def clear = ks.DELETE
   }
 
-  def maintenance(on: Boolean, app: String = GitClient.remotes("heroku")) =
-    (api.POST / "apps" / app / "server" / "maintenance" <:< AcceptJson as_!(
-      user, password)) << Map(
-      "maintenance_mode" -> (if(on) "1" else "0")
-    )
+  def maintenance(on: Boolean, remote: String = DefaultRemote) = requireApp(remote) match {
+    case app =>
+      (api.POST / "apps" / app / "server" / "maintenance" <:< AcceptJson as_!(
+        user, password)) << Map(
+        "maintenance_mode" -> (if(on) "1" else "0")
+      )
+  }
 
-  def ps(app: String = GitClient.remotes("heroku")) =
-    api / "apps" / app / "ps" <:< AcceptJson as_!(user, password)
+  def ps(remote: String = DefaultRemote) = requireApp(remote) match {
+    case app =>
+      api / "apps" / app / "ps" <:< AcceptJson as_!(user, password)
+  }
 
-  def releases(app: String = GitClient.remotes("heroku")) = new {
+  def releases(remote: String = DefaultRemote) = new {
+    val app = requireApp(remote)
     private def rels = api / "apps" / app / "releases" <:< AcceptJson as_!(
       user, password
     )
@@ -125,22 +145,29 @@ case class HerokuClient(user: String, password: String) {
     def list = rels
   }
 
-  def rename(name: String, app: String = GitClient.remotes("heroku")) =
-    (api / "apps" / app <:< AcceptJson as_!(user, password)) <<< Map(
-      "app[name]" -> name
-    )
+  def rename(name: String, remote: String = DefaultRemote) = requireApp(remote) match {
+    case app =>
+      (api / "apps" / app <:< AcceptJson as_!(user, password)) <<< Map(
+        "app[name]" -> name
+      )
+  }
 
-  def rollback(rel: String, app: String = GitClient.remotes("heroku")) =
-    (api / "apps" / app <:< AcceptJson as_!(user, password)) << Map(
-      "rollback" -> rel
-    )
-
+  def rollback(rel: String, remote: String = DefaultRemote) = requireApp(remote) match {
+    case app =>
+      (api / "apps" / app <:< AcceptJson as_!(user, password)) << Map(
+        "rollback" -> rel
+      )
+  }
 }
 
 object HerokuClient {
   import dispatch._
   import Http._
   import com.codahale.jerkson.Json._
+
+  val DefaultRemote = "heroku"
+
+  val DefaultStack = "cedar"
 
   lazy val site = :/("heroku.com")
 
@@ -152,6 +179,12 @@ object HerokuClient {
   lazy val AcceptJson = Map(
     "Accept" -> "application/json"
   )
+
+  def requireApp(remote: String) =
+    GitClient.remotes.get(remote) match {
+      case Some(app) => app
+      case _ => sys.error("No registered Heroku app for remote '%s'" format remote)
+    }
 
   def auth(email: String, password: String) = parse[Map[String, String]](
     Http(:/("api.heroku.com").secure.POST / "login" << Map(
