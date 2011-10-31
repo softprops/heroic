@@ -13,7 +13,7 @@ case class Proc(ptype: String, cmd: String)
  *  assumes exported env variables
  *  REPO path to m2 maven repository */
 object Plugin extends sbt.Plugin {
-
+  import ClassLoaders._
   import sbt.Keys._
   import HeroKeys._
   import heroic.{Git => GitCli}
@@ -263,10 +263,10 @@ object Plugin extends sbt.Plugin {
     },
     conf <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
-        args match {
-          case Nil => confTask(out.log)
-          case remote :: _ => confTask(out.log, remote = remote)
-        }
+        confTask(out.log, args match {
+          case Nil => HerokuClient.DefaultRemote
+          case remote :: _ => remote
+        })
       }
     },
     confAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
@@ -424,9 +424,9 @@ object Plugin extends sbt.Plugin {
         }
         out.log.info("Fetching release listing")
         client { cli =>
-          out.log.info(
-            http(cli.releases(remote).show(rel) as_str)
-          )
+          printRelease(inClassLoader(classOf[Release]) {
+            parse[Release](http(cli.releases(remote).show(rel) as_str))
+          }, out.log, true)
         }
       }
     },
@@ -631,11 +631,11 @@ object Plugin extends sbt.Plugin {
 
   private def releasesTask(l: Logger, remote: String) =
     client { cli =>
-      val raw = http(cli.releases(remote).list as_str)
-      l.info(raw)
-      val rs = parse[Seq[Release]](
-        raw//http(cli.releases(remote).list as_str)
-      )
+      val rs = inClassLoader(classOf[Release]) {
+        parse[Seq[Release]](
+          http(cli.releases(remote).list as_str)
+        )
+      }
       rs.foreach(printRelease(_, l))
     }
 
@@ -712,15 +712,16 @@ object Plugin extends sbt.Plugin {
       ), l)
     }
 
-  private def printMap(m: Map[String, String], log: Logger) = {
-    val disp =
-      "%-" +
-      (m.keys.toSeq.sortWith(_.size > _.size).head.size) +
-      "s -> %s"
-    m.foreach { case (k, v) =>
-      log.info(disp format(k, v))
+  private def printMap(m: Map[String, String], log: Logger) =
+    if(!m.isEmpty) {
+      val disp =
+        "%-" +
+        (m.keys.toSeq.sortWith(_.size > _.size).head.size) +
+        "s -> %s"
+      m.foreach { case (k, v) =>
+        log.info(disp format(k, v))
+      }
     }
-  }
 
   private def printAddons(aos: List[Map[String, String]], log: Logger) = {
     val disp = "%-"+aos.map(_("name").size).sortWith(_ > _).head +"s %s %s"
@@ -732,7 +733,7 @@ object Plugin extends sbt.Plugin {
     }).sortWith(_.compareTo(_) < 0).foreach(log.info(_))
   }
 
-  private def confTask(l: Logger, remote: String = HerokuClient.DefaultRemote) =
+  private def confTask(l: Logger, remote: String) =
     client { cli =>
       import com.codahale.jerkson.Json._
       l.info("Fetching remote configuration")
