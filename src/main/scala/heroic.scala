@@ -13,6 +13,7 @@ case class Proc(ptype: String, cmd: String)
  *  assumes exported env variables
  *  REPO path to m2 maven repository */
 object Plugin extends sbt.Plugin {
+
   import sbt.Keys._
   import HeroKeys._
   import heroic.{Git => GitCli}
@@ -82,8 +83,8 @@ object Plugin extends sbt.Plugin {
     val keysAdd = InputKey[Unit]("keys-add", "Adds a registed key with heroku")
     val keysRm = InputKey[Unit]("keys-rm", "Removes a registed key with heroku")
 
-    // git settings
-    val push = TaskKey[Int]("push", "Pushes project to Heroku")
+    // git settings TODO migrate these to use joshes new git plugin keys
+    val push = InputKey[Int]("push", "Pushes project to Heroku")
     val diff = TaskKey[Int]("git-diff", "Displays a diff of untracked sources")
     val status = TaskKey[Int]("git-status", "Display the status of your git staging area")
     val commit = InputKey[Int]("git-commit", "Commits a staging area with an optional msg")
@@ -150,8 +151,8 @@ object Plugin extends sbt.Plugin {
     mainClass in Hero <<= mainClass in Runtime,
     scriptName := "hero",
     script <<= scriptTask,
-    procs <<= (state, baseDirectory, target, scriptName) map {
-      (state, b, t, s) => {
+    procs <<= (state, target, scriptName) map {
+      (state, t, s) => {
         Seq(Proc("web", "sh %s/%s" format(relativeToRoot(state, t).get, s)))
       }
     },
@@ -244,7 +245,14 @@ object Plugin extends sbt.Plugin {
         })
       }
     },
-    push <<= pushTask,
+    push <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        pushTask(out.log, args match {
+          case Nil => HerokuClient.DefaultRemote
+          case remote :: _ => remote
+        })
+      }
+    },
     info <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         infoTask(out.log, args match {
@@ -623,8 +631,10 @@ object Plugin extends sbt.Plugin {
 
   private def releasesTask(l: Logger, remote: String) =
     client { cli =>
+      val raw = http(cli.releases(remote).list as_str)
+      l.info(raw)
       val rs = parse[Seq[Release]](
-        http(cli.releases(remote).list as_str)
+        raw//http(cli.releases(remote).list as_str)
       )
       rs.foreach(printRelease(_, l))
     }
@@ -800,11 +810,12 @@ object Plugin extends sbt.Plugin {
   }
 
   // todo: check for local changes...
-  private def pushTask: Initialize[Task[Int]] =
-    exec(GitCli.push("heroku"),
-      "Updating application (this may take a few seconds)",
-       "Check the status of your application with `hero:ps` or `hero:logs`"
-    )
+  private def pushTask(l: Logger, remote: String) = {
+    l.info("Updating application (this may take a few seconds)")
+    val stat = GitCli.push(remote) ! l
+    if(stat == 0) l.info("Check the status of your application with `hero:ps` or `hero:logs`")
+    stat
+  }
 
   private def procfileTask: Initialize[Task[File]] =
     (state, procs, streams) map {
