@@ -678,7 +678,7 @@ object Plugin extends sbt.Plugin {
   private def infoTask(l: Logger, remote: String) =
     client { cli =>
       l.info("Fetching App info")
-      http(cli.info(remote) <> { xml =>
+      http(cli.info(HerokuClient.requireApp(remote)) <> { xml =>
         def attr(name: String) = (xml \\ "app" \ name).text
         l.info("=== %s" format attr("name"))
         l.info("owner: %s" format attr("owner"))

@@ -76,7 +76,7 @@ case class HerokuClient(user: String, password: String) {
   // todo: can optionally post with a name
   // more info @ http://devcenter.heroku.com/articles/multiple-environments
 
-  def create(remote: String = DefaultRemote, stack: String = DefaultStack) =
+  def create(stack: String = DefaultStack) =
     (api.POST / "apps" <:< AcceptJson as_!(user, password)) << Map(
       "app[stack]" -> stack
     )
@@ -93,10 +93,8 @@ case class HerokuClient(user: String, password: String) {
     // def rm
   }
 
-  def info(remote: String = DefaultRemote) = requireApp(remote) match {
-    case app =>
-      api / "apps" / app <:< AcceptJson as_!(user, password)
-  }
+  def info(app: String) =
+    api / "apps" / app <:< AcceptJson as_!(user, password)
 
    /* more info @ http://devcenter.heroku.com/articles/logging */
   /* todo drains @ http://devcenter.heroku.com/articles/logging#syslog_drains */
