@@ -614,20 +614,20 @@ object Plugin extends sbt.Plugin {
       l.info(http(cli.domains(remote).show as_str))
     }
 
- private def printRelease(r: Release, log: Logger, details: Boolean = false) = {
-   log.info("=== %s" format r.name)
-   log.info("created %s by %s %s" format(r.created_at, r.user, 
-     if(r.commit isDefined) "(%s)" format(r.commit.get) else ""
-   ))
-   if(details) {
-     log.info("ps table:")
-     printMap(r.pstable, log)
-     log.info("env:")
-     printMap(r.env, log)
-     log.info("addons:")
-     r.addons.foreach(log.info(_))
-   }
- }
+  private def printRelease(r: Release, log: Logger, details: Boolean = false) = {
+    log.info("=== %s" format r.name)
+    log.info("created %s by %s %s" format(r.created_at, r.user, 
+      if(r.commit isDefined) "(%s)" format(r.commit.get) else ""
+    ))
+    if(details) {
+      log.info("ps table:")
+      printMap(r.pstable, log)
+      log.info("env:")
+      printMap(r.env, log)
+      log.info("addons:")
+      r.addons.foreach(log.info(_))
+    }
+  }
 
   private def releasesTask(l: Logger, remote: String) =
     client { cli =>
