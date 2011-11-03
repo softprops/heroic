@@ -9,6 +9,9 @@ case class Release(env: Map[String, String], pstable: Map[String, String],
 
 case class Proc(ptype: String, cmd: String)
 
+case class Domain(created_at: String, updated_at: String, default: Option[String],
+                  domain: String, id: Int, app_id: String, base_domain: String)
+
 /** Provides Heroku deployment capability.
  *  assumes exported env variables
  *  REPO path to m2 maven repository */
@@ -76,8 +79,9 @@ object Plugin extends sbt.Plugin {
 
     val rename = InputKey[Unit]("rename", "Give your app a custom subdomain on heroku")
     val domains = InputKey[Unit]("domains", "List Heroku domains")
-    val domainsAdd = InputKey[Int]("domains-add", "Add a Heroku domain")
-    val domainsRm = InputKey[Int]("domains-rm", "Removes a Heroku domain")
+    val domainsAdd = InputKey[Unit]("domains-add", "Add a Heroku domain")
+    val domainsRm = InputKey[Unit]("domains-rm", "Removes a Heroku domain")
+    val domainsClear = InputKey[Unit]("domains-clear", "Clears Heroku domains")
 
     val keys = TaskKey[Unit]("keys", "Lists Heroku registered keys")
     val keysAdd = InputKey[Unit]("keys-add", "Adds a registed key with heroku")
@@ -476,20 +480,36 @@ object Plugin extends sbt.Plugin {
     },
     domainsAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
-        args match {
-          case Seq(dom) =>
-            out.log.info("Adding domain %s" format dom)
-            Heroku.domains.add(dom) ! out.log
-        }
+        val (remote, dom) =
+          args match {
+            case dom :: Nil => (HerokuClient.DefaultRemote, dom)
+            case remote :: dom :: Nil => (remote, dom)
+            case _ => sys.error(
+              "usage: hero:domains-add <domain>"
+            )
+          }
+        domainsAddTask(out.log, remote, dom)
       }
     },
     domainsRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
-        args match {
-          case Seq(dom) =>
-            out.log.info("Removing domain %s" format dom)
-            Heroku.domains.rm(dom) ! out.log
-        }
+        val (remote, dom) =
+          args match {
+            case dom :: Nil => (HerokuClient.DefaultRemote, dom)
+            case remote :: dom :: Nil => (remote, dom)
+            case _ => sys.error(
+              "usage: hero:domains-rm <domain>"
+            )
+          }
+        domainsRmTask(out.log, remote, dom)
+      }
+    },
+    domainsClear <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        domainsClearTask(out.log, args match {
+          case Nil => HerokuClient.DefaultRemote
+          case remote :: _ => remote
+        })
       }
     },
     keys <<= keysTask,
@@ -529,8 +549,8 @@ object Plugin extends sbt.Plugin {
               } else if(Prompt.Nos contains yn) {
                 out.log.info("Canceling request")
               } else sys.error("Unexpected response %s" format yn)
-            case Seq(kf) =>
-              file(kf) match {
+            case kf =>
+              file(kf mkString(" ")) match {
                 case f if(f.exists) =>
                   val yn = ask("Are you sure you want to deregister this key? [Y/N] ") {
                     _.trim.toLowerCase
@@ -538,7 +558,9 @@ object Plugin extends sbt.Plugin {
                   if(Prompt.Okays contains yn) {
                     out.log.info("Deregistering key")
                     try {
-                      out.log.info(http(cli.keys.rm(IO.read(f)) as_str))
+                      val contents = IO.read(f)
+                      out.log.debug(contents)
+                      out.log.info(http(cli.keys.rm(contents) as_str))
                       out.log.info("Deregistered key")
                     } catch {
                       case dispatch.StatusCode(404, msg) =>
@@ -549,7 +571,7 @@ object Plugin extends sbt.Plugin {
                   } else sys.error("Unexpected response %s" format yn)
                 case f => sys.error("%s does not exist" format f)
               }
-            case _ => sys.error("usage: hero:keys-rm <path-to-key>")
+            //case _ => sys.error("usage: hero:keys-rm <path-to-key>")
           }
         }
       }
@@ -611,7 +633,33 @@ object Plugin extends sbt.Plugin {
 
   private def domainsTask(l: Logger, remote: String) =
     client { cli =>
-      l.info(http(cli.domains(remote).show as_str))
+      l.info("Fetching Heroku domains...\n")
+      l.info((inClassLoader(classOf[Domain]){
+        parse[Seq[Domain]](http(cli.domains(remote).show as_str))
+      }).map(_.domain).mkString("* ", "\n * ", ""))
+    }
+
+  private def domainsAddTask(l: Logger, remote: String, domain: String) =
+    client { cli =>
+      try{
+        http(cli.domains(remote).add(domain) as_str)
+        l.info("Added Heroku domain %s" format domain)
+      } catch {
+        case dispatch.StatusCode(422, _) =>
+          l.warn("Domain %s is taken" format domain)
+      }
+    }
+
+  private def domainsRmTask(l: Logger, remote: String, domain: String) =
+    client { cli =>
+      http(cli.domains(remote).rm(domain) as_str)
+      l.info("Removed Heroku domain %s" format domain)
+    }
+
+  private def domainsClearTask(l: Logger, remote: String) =
+    client { cli =>
+      http(cli.domains(remote).clear as_str)
+      l.info("Cleared Heroku domains")
     }
 
   private def printRelease(r: Release, log: Logger, details: Boolean = false) = {

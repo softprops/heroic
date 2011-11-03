@@ -89,8 +89,9 @@ case class HerokuClient(user: String, password: String) {
   def domains(remote: String = DefaultRemote) = new {
     val app = requireApp(remote)
     def show = api / "apps" / app / "domains" <:< AcceptJson as_!(user, password)
-    // def add
-    // def rm
+    def add(dom: String) = api.POST / "apps" / app / "domains"  << dom.trim.toLowerCase <:< AcceptJson as_!(user, password)
+    def rm(dom: String) = api.DELETE / "apps" / app / "domains" / dom.trim.toLowerCase <:< AcceptJson as_!(user, password)
+    def clear = api.DELETE / "apps" / app / "domains" <:< AcceptJson as_!(user, password)
   }
 
   def info(app: String) =

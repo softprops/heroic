@@ -39,14 +39,8 @@ object Git extends Cmd("git", "download from http://git-scm.com/download") {
 }
 
 object Heroku extends Cmd("heroku", "try `gem install heroku`") {
-
   def ps = new {
     def scale(proc: String, n: Int) = call("ps:scale %s=%s" format(proc, n))
     def restart(proc: String) = call("ps:restart %s" format proc)
-  }
-
-  def domains = new {
-    def add(dom: String) = call("domains:add %s" format dom)
-    def rm(dom: String) = call("domains:remove %s" format dom)
   }
 }
