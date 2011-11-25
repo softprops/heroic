@@ -58,6 +58,8 @@ object Plugin extends sbt.Plugin {
     val create = InputKey[Unit]("create", "Invokes Heroku client create command")
     val destroy = InputKey[Unit]("destroy", "Deletes remote application")
     val info = InputKey[Unit]("info", "Displays Heroku deployment info")
+    val workers = InputKey[Unit]("workers", "Scale the numer of your apps worker processes")
+    val dynos = InputKey[Unit]("dynos", "Scale the number or your apps dynos")
 
     val addons = InputKey[Unit]("addons", "Lists installed Heroku addons")
     val addonsAvailable = InputKey[Unit]("addons-available", "Lists available Heroku addons")
@@ -263,6 +265,30 @@ object Plugin extends sbt.Plugin {
           case Nil => HerokuClient.DefaultRemote
           case remote :: _ => remote
         })
+      }
+    },
+    workers <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        val (remote, n) = args match {
+          case Seq(remote, n) =>
+            (remote, n.toInt)
+          case Seq(n) =>
+            (HerokuClient.DefaultRemote, n.toInt)
+          case _ => sys.error("usage: workers <n>")
+        }
+        workersTask(out.log, remote, n)
+      }
+    },
+    dynos <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        val (remote, n) = args match {
+          case Seq(remote, n) =>
+            (remote, n.toInt)
+          case Seq(n) =>
+            (HerokuClient.DefaultRemote, n.toInt)
+          case _ => sys.error("usage: dynos <n>")
+        }
+        dynosTask(out.log, remote, n)
       }
     },
     conf <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
@@ -743,6 +769,18 @@ object Plugin extends sbt.Plugin {
         l.info("web url: %s" format attr("web_url"))
         l.info("git url: %s" format attr("git_url"))
       })
+    }
+
+  private def workersTask(l: Logger, remote: String, n: Int) =
+    client { cli =>
+      l.info("Scaling App Workers")
+      l.info(http(cli.workers(n, HerokuClient.requireApp(remote)) as_str))
+    }
+
+  private def dynosTask(l: Logger, remote: String, n: Int) =
+    client { cli =>
+      l.info("Scaling App Dynos")
+      l.info(http(cli.dynos(n, HerokuClient.requireApp(remote)) as_str))
     }
 
   // todo: make this an input task with a query filter (its a long list!)

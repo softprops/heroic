@@ -135,6 +135,20 @@ case class HerokuClient(user: String, password: String) {
       api / "apps" / app / "ps" <:< AcceptJson as_!(user, password)
   }
 
+  def dynos(n: Int, remote: String = DefaultRemote) = requireApp(remote) match {
+    case app =>
+      (api.PUT / "apps" / app / "dynos") <<< generate(Map(
+        "dynos" -> n
+      )) <:< AcceptJson as_!(user, password)
+  }
+
+  def workers(n: Int, remote: String = DefaultRemote) = requireApp(remote) match {
+    case app =>
+      (api.PUT / "apps" / app / "workers") <<< generate(Map(
+        "dynos" -> n
+      )) <:< AcceptJson as_!(user, password)
+  }
+
   def releases(remote: String = DefaultRemote) = new {
     val app = requireApp(remote)
     private def rels = api / "apps" / app / "releases" <:< AcceptJson as_!(

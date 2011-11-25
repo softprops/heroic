@@ -12,7 +12,7 @@ version <<= sbtVersion(v =>
   else error("unsupported version of sbt %s" format v)
 )
 
-seq(ScriptedPlugin.scriptedSettings: _*)
+//seq(ScriptedPlugin.scriptedSettings: _*)
 
 libraryDependencies ++= Seq(
   "net.databinder" %% "dispatch-http" % "0.8.5",
