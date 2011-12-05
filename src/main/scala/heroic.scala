@@ -49,6 +49,7 @@ object Plugin extends sbt.Plugin {
     // heroku api
 
     val auth = TaskKey[Unit]("auth", "Get or acquires heroku credentials")
+    val deauth = TaskKey[Unit]("deauth", "Removes heroku credentials")
 
     val collaborators = InputKey[Unit]("collaborators", "Lists Heroku application collaborators")
     val collaboratorsAdd = InputKey[Unit]("collaborators-add", "Adds a Heroku application collaborator by email")
@@ -96,6 +97,9 @@ object Plugin extends sbt.Plugin {
     val commit = InputKey[Int]("git-commit", "Commits a staging area with an optional msg")
     val add = InputKey[Int]("git-add", "Adds an optional list of paths to the git index, defaults to '.'")
     val git = InputKey[Int]("exec", "Executes arbitrary git command")
+
+    private def key(name: String) = "hero-%s" format name
+
   }
 
   val Hero = config("hero")
@@ -172,7 +176,6 @@ object Plugin extends sbt.Plugin {
     equip <<= stage in Compile
   ))
 
-
   def clientSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
     checkDependencies <<= checkDependenciesTask,
     collaborators <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
@@ -212,6 +215,7 @@ object Plugin extends sbt.Plugin {
       }
     },
     auth <<= authTask,
+    deauth <<= deauthTask,
     localHero <<= localHeroTask dependsOn(compile in Compile),
     logs <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
@@ -626,6 +630,9 @@ object Plugin extends sbt.Plugin {
 
   def authTask: Initialize[Task[Unit]] =
     withLog(l => Auth.acquireCredentials(l))
+
+  def deauthTask: Initialize[Task[Unit]] =
+    withLog(l => Auth.removeCredentials(l))
 
   private def statusTask: Initialize[Task[Int]] =
     exec(GitCli.status())
