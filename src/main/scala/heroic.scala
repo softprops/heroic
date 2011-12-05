@@ -59,7 +59,7 @@ object Plugin extends sbt.Plugin {
     val create = InputKey[Unit]("create", "Invokes Heroku client create command")
     val destroy = InputKey[Unit]("destroy", "Deletes remote application")
     val info = InputKey[Unit]("info", "Displays Heroku deployment info")
-    val workers = InputKey[Unit]("workers", "Scale the numer of your apps worker processes")
+    val workers = InputKey[Unit]("workers", "Scale the number of your apps worker processes")
     val dynos = InputKey[Unit]("dynos", "Scale the number or your apps dynos")
 
     val addons = InputKey[Unit]("addons", "Lists installed Heroku addons")
@@ -841,10 +841,11 @@ object Plugin extends sbt.Plugin {
 
   // note you can pass --remote name to override
   // heroku's default remote name for multiple envs
-  // stanging, production, ect
+  // staging, production, ect
   // 
   private def createTask(l: Logger, remote: String = "heroku") =
     client { cli =>
+      // todo, check for git support before attempting to create a remote instance
       l.info("Creating remote Heroku application. (remote name '%s')" format remote)
       val app = parse[Map[String, String]](
         http(cli.create() as_str)
