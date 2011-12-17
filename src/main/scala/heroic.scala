@@ -12,6 +12,10 @@ case class Proc(ptype: String, cmd: String)
 case class Domain(created_at: String, updated_at: String, default: Option[String],
                   domain: String, id: Int, app_id: String, base_domain: String)
 
+case class Name(name: String)
+
+case class Feature(kind: String, name: String, enabled:Boolean, docs: String, summary: String)
+
 /** Provides Heroku deployment capability.
  *  assumes exported env variables
  *  REPO path to m2 maven repository */
@@ -85,6 +89,11 @@ object Plugin extends sbt.Plugin {
     val domainsAdd = InputKey[Unit]("domains-add", "Add a Heroku domain")
     val domainsRm = InputKey[Unit]("domains-rm", "Removes a Heroku domain")
     val domainsClear = InputKey[Unit]("domains-clear", "Clears Heroku domains")
+
+    val features = InputKey[Unit]("features", "List Heroku features")
+    val feature = InputKey[Unit]("feature", "Show info for a given Heroku feature")
+    val featureEnable = InputKey[Unit]("feature-enable", "Enables a Heroku feature")
+    val featureDisable = InputKey[Unit]("feature-disable", "Disables a Heroku feature")
 
     val keys = TaskKey[Unit]("keys", "Lists Heroku registered keys")
     val keysAdd = InputKey[Unit]("keys-add", "Adds a registed key with heroku")
@@ -482,21 +491,26 @@ object Plugin extends sbt.Plugin {
     // fixme
     rename <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
-        args match {
-          case Seq(to) =>
-            client { cli =>
-              out.log.info("Requesting subdomain")
-              try {
-                out.log.info(
-                  http(cli.rename(to) as_str)
-                )
-                // todo. need to rename remote if successfull
-              } catch {
-                case dispatch.StatusCode(406, msg) =>
-                  out.log.warn("Fail to rename app. %s" format msg)
-              }
+        val (remote, name) = args match {
+          case Seq(name) => (HerokuClient.DefaultRemote, name)
+          case Seq(remote, name) => (remote, name)
+          case _ => sys.error("usage: hero:rename <subdomain>")
+        }
+        client { cli =>
+          out.log.info("Requesting subdomain")
+          try {
+            val n = inClassLoader(classOf[Name]){
+              parse[Name](
+                http(cli.rename(name) as_str)
+              )
             }
-          case _ => 
+            out.log.info("Renamed report subdomain to %s" format n)
+            GitClient.updateRemote(n.name, remote)
+            out.log.info("Updated git remote")
+          } catch {
+            case dispatch.StatusCode(406, msg) =>
+              out.log.warn("Fail to rename app. %s" format msg)
+          }
         }
       }
     },
@@ -540,6 +554,53 @@ object Plugin extends sbt.Plugin {
           case Nil => HerokuClient.DefaultRemote
           case remote :: _ => remote
         })
+      }
+    },
+    features <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        featuresTask(out.log, args match {
+          case Nil => HerokuClient.DefaultRemote
+          case remote :: _ => remote
+        })
+      }
+    },
+    feature <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        val (remote, fet) =
+          args match {
+            case feature :: Nil => (HerokuClient.DefaultRemote, feature)
+            case remote :: feature :: Nil => (remote, feature)
+            case _ => sys.error(
+              "usage: hero:feature <feature>"
+            )
+          }
+        featureTask(out.log, remote, fet)
+      }
+    },
+    featureEnable <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        val (remote, fet) =
+          args match {
+            case feature :: Nil => (HerokuClient.DefaultRemote, feature)
+            case remote :: feature :: Nil => (remote, feature)
+            case _ => sys.error(
+              "usage: hero:feature-add <feature>"
+            )
+          }
+        featureEnableTask(out.log, remote, fet)
+      }
+    },
+    featureDisable <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        val (remote, fet) =
+          args match {
+            case feature :: Nil => (HerokuClient.DefaultRemote, feature)
+            case remote :: feature :: Nil => (remote, feature)
+            case _ => sys.error(
+              "usage: hero:feature-rm <feature>"
+            )
+          }
+        featureDisableTask(out.log, remote, fet)
       }
     },
     keys <<= keysTask,
@@ -693,6 +754,66 @@ object Plugin extends sbt.Plugin {
     client { cli =>
       http(cli.domains(remote).clear as_str)
       l.info("Cleared Heroku domains")
+    }
+
+  private def featuresTask(l: Logger, remote: String) =
+    client { cli =>
+      l.info("Fetching Heroku features...\n")
+      try {
+        val fs = inClassLoader(classOf[Feature]) {
+          parse[Seq[Feature]](http(cli.features(remote).all as_str))
+        }
+        val longest = fs.map(_.name.size).sorted.last
+        val (enabled, disabled) = fs.partition(_.enabled)
+        l.info("Enabled features")
+        enabled.foreach(f => l.info("- %-"+longest+"s # %s" format(f.name, f.summary)))
+        l.info("Disabled features")
+        disabled.foreach(f => l.info("- %-"+longest+"s # %s" format(f.name, f.summary)))
+      } catch {
+        case dispatch.StatusCode(410, m) =>
+          l.warn("This experimental feature is no longer available: %s" format m)
+      }
+    }
+
+  private def featureTask(l: Logger, remote: String, feature: String) =
+    client { cli =>
+      l.info("Fetching %s feature info" format feature)
+      try {
+        val f = inClassLoader(classOf[Feature]) {
+          parse[Feature](http(cli.features(remote).show(feature) as_str))
+        }
+        l.info("=== %s" format f.name)
+        l.info("Description:   %s" format f.summary)
+        l.info("Documentation: %s" format f.docs)
+        l.info("Enabled:       %s" format(if(f.enabled) "yes" else "no"))
+      } catch {
+        case dispatch.StatusCode(410, _) =>
+          l.warn("This experimental feature is no longer available")
+      }
+    }
+
+  private def featureEnableTask(l: Logger, remote: String, feature: String) =
+    client { cli =>
+      l.info("Enabling %s feature" format feature)
+      try {
+        http(cli.features(remote).enable(feature) as_str)
+        l.info("Enabled %s feature" format feature)
+      } catch {
+        case dispatch.StatusCode(410, m) =>
+          l.warn("This experimental feature is no longer available: %s" format m)
+      }
+    }
+
+  private def featureDisableTask(l: Logger, remote: String, feature: String) =
+    client { cli =>
+      l.info("Disabled %s feature" format feature)
+      try {
+        http(cli.features(remote).disable(feature) as_str)
+        l.info("Disabled feature %s feature" format feature)
+      } catch {
+        case dispatch.StatusCode(410, m) =>
+          l.warn("This experimental feature is no longer available %s" format m)
+      }
     }
 
   private def printRelease(r: Release, log: Logger, details: Boolean = false) = {
