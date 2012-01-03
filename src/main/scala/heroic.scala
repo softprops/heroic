@@ -31,88 +31,85 @@ object Plugin extends sbt.Plugin {
   def stageTask(script: File, procfile: File, slugfile: File) = { /* noop */ }
 
   object HeroKeys {
+
+    val hero = TaskKey[Unit]("hero", "Task for scoping all heroic settings")
+
     // app settings
-    val equip = TaskKey[Unit]("equip", "Prepares project for Heroku deployment")
+    val equip = TaskKey[Unit](key("equip"), "Prepares project for Heroku deployment")
 
-    val procfile = TaskKey[File]("procfile", "Writes Heroku Procfile to project base directory")
-    val procs = TaskKey[Seq[Proc]]("procs", "List of procs to include in procfile")
+    val procfile = TaskKey[File](key("procfile"), "Writes Heroku Procfile to project base directory")
+    val procs = TaskKey[Seq[Proc]](key("procs"), "List of procs to include in procfile")
 
-    val scriptName = SettingKey[String]("script-name", "Name of script-file")
-    val scriptFile = SettingKey[File]("script-file", "Target process for for Heroku web procfile key")
-    val script = TaskKey[File]("script", "Generates script-file")
+    val scriptName = SettingKey[String](key("script-name"), "Name of script-file")
+    val scriptFile = SettingKey[File](key("script-file"), "Target process for for Heroku web procfile key")
+    val script = TaskKey[File](key("script"), "Generates script-file")
 
-    val slugIgnored = TaskKey[Seq[String]]("slug-ignored", "List of items to ignore when transfering application")
-    val slugIgnore = TaskKey[File]("slug-ignore", "Generates a Heroku .slugignore file in the base directory")
+    val slugIgnored = TaskKey[Seq[String]](key("slug-ignored"), "List of items to ignore when transfering application")
+    val slugIgnore = TaskKey[File](key("slug-ignore"), "Generates a Heroku .slugignore file in the base directory")
     
     // client settings
 
-    val checkDependencies = TaskKey[Boolean]("check-dependencies", "Checks to see if required dependencies are installed")
+    val checkDependencies = TaskKey[Boolean](key("check-dependencies"), "Checks to see if required dependencies are installed")
 
-    val localHero = TaskKey[Unit]("local-hero", "Starts a local emulated Heroku env")
+    val local = TaskKey[Unit](key("local"), "Runs your web proc as Heroku would")
 
     // heroku api
 
-    val auth = TaskKey[Unit]("auth", "Get or acquires heroku credentials")
-    val deauth = TaskKey[Unit]("deauth", "Removes heroku credentials")
+    val authenticate= TaskKey[Unit](key("authenticate"), "Get or acquires heroku credentials")
+    val deauthenticate = TaskKey[Unit](key("deauthenticate"), "Removes heroku credentials")
 
-    val collaborators = InputKey[Unit]("collaborators", "Lists Heroku application collaborators")
-    val collaboratorsAdd = InputKey[Unit]("collaborators-add", "Adds a Heroku application collaborator by email")
-    val collaboratorsRm = InputKey[Unit]("collaborators-rm", "Removes a Heroku application collaborator by email")
-    val logs = InputKey[Unit]("logs", "Invokes Heroku client logs command")
-    val ps = InputKey[Unit]("ps", "Invokes Heroku client ps command")
-    val create = InputKey[Unit]("create", "Invokes Heroku client create command")
-    val destroy = InputKey[Unit]("destroy", "Deletes remote application")
-    val info = InputKey[Unit]("info", "Displays Heroku deployment info")
-    val workers = InputKey[Unit]("workers", "Scale the number of your apps worker processes")
-    val dynos = InputKey[Unit]("dynos", "Scale the number or your apps dynos")
+    val collaborators = InputKey[Unit](key("collaborators"), "Lists Heroku application collaborators")
+    val collaboratorsAdd = InputKey[Unit](key("collaborators-add"), "Adds a Heroku application collaborator by email")
+    val collaboratorsRm = InputKey[Unit](key("collaborators-rm"), "Removes a Heroku application collaborator by email")
+    val logs = InputKey[Unit](key("logs"), "Invokes Heroku client logs command")
+    val ps = InputKey[Unit](key("ps"), "Invokes Heroku client ps command")
+    val create = InputKey[Unit](key("create"), "Invokes Heroku client create command")
+    val destroy = InputKey[Unit](key("destroy"), "Deletes remote application")
+    val info = InputKey[Unit](key("info"), "Displays Heroku deployment info")
+    val workers = InputKey[Unit](key("workers"), "Scale the number of your apps worker processes")
+    val dynos = InputKey[Unit](key("dynos"), "Scale the number or your apps dynos")
 
-    val addons = InputKey[Unit]("addons", "Lists installed Heroku addons")
-    val addonsAvailable = InputKey[Unit]("addons-available", "Lists available Heroku addons")
-    val addonsAdd = InputKey[Unit]("addons-add", "Install a Heroku addon by name")
-    val addonsRm = InputKey[Unit]("addons-rm", "Uninstall a Heroku addon by name")
+    val addons = InputKey[Unit](key("addons"), "Lists installed Heroku addons")
+    val addonsAvailable = InputKey[Unit](key("addons-available"), "Lists available Heroku addons")
+    val addonsAdd = InputKey[Unit](key("addons-add"), "Install a Heroku addon by name")
+    val addonsRm = InputKey[Unit](key("addons-rm"), "Uninstall a Heroku addon by name")
     // punt for now
     //val addonsUpgrade = InputKey[Int]("addons-upgrade", "Upgrade an installed Heroku addon")
 
-    val conf = InputKey[Unit]("conf", "Lists available remote Heroku config properties")
-    val confAdd = InputKey[Unit]("conf-add", "Adds a Heroku config property")
-    val confRm = InputKey[Unit]("conf-rm", "Removes a Heroku config property")
+    val conf = InputKey[Unit](key("conf"), "Lists available remote Heroku config properties")
+    val confAdd = InputKey[Unit](key("conf-add"), "Adds a Heroku config property")
+    val confRm = InputKey[Unit](key("conf-rm"), "Removes a Heroku config property")
 
-    val maintenanceOff = InputKey[Unit]("maint-off", "Turns on Heroku Maintenance mode")
-    val maintenanceOn = InputKey[Unit]("maint-on", "Turns off Heroku Maintenance mode")
+    val maintenanceOff = InputKey[Unit](key("maint-off"), "Turns on Heroku Maintenance mode")
+    val maintenanceOn = InputKey[Unit](key("maint-on"), "Turns off Heroku Maintenance mode")
 
-    val releases = InputKey[Unit]("releases", "Lists all releases")
-    val releaseInfo = InputKey[Unit]("release-info", "Shows info about a target release")
-    val rollback = InputKey[Unit]("rollback", "Rolls back to a target release")
+    val releases = InputKey[Unit](key("releases"), "Lists all releases")
+    val releaseInfo = InputKey[Unit](key("release-info"), "Shows info about a target release")
+    val rollback = InputKey[Unit](key("rollback"), "Rolls back to a target release")
 
-    val rename = InputKey[Unit]("rename", "Give your app a custom subdomain on heroku")
-    val domains = InputKey[Unit]("domains", "List Heroku domains")
-    val domainsAdd = InputKey[Unit]("domains-add", "Add a Heroku domain")
-    val domainsRm = InputKey[Unit]("domains-rm", "Removes a Heroku domain")
-    val domainsClear = InputKey[Unit]("domains-clear", "Clears Heroku domains")
+    val rename = InputKey[Unit](key("rename"), "Give your app a custom subdomain on heroku")
+    val domains = InputKey[Unit](key("domains"), "List Heroku domains")
+    val domainsAdd = InputKey[Unit](key("domains-add"), "Add a Heroku domain")
+    val domainsRm = InputKey[Unit](key("domains-rm"), "Removes a Heroku domain")
+    val domainsClear = InputKey[Unit](key("domains-clear"), "Clears Heroku domains")
 
-    val features = InputKey[Unit]("features", "List Heroku features")
-    val feature = InputKey[Unit]("feature", "Show info for a given Heroku feature")
-    val featureEnable = InputKey[Unit]("feature-enable", "Enables a Heroku feature")
-    val featureDisable = InputKey[Unit]("feature-disable", "Disables a Heroku feature")
+    val features = InputKey[Unit](key("features"), "List Heroku features")
+    val feature = InputKey[Unit](key("feature"), "Show info for a given Heroku feature")
+    val featureEnable = InputKey[Unit](key("feature-enable"), "Enables a Heroku feature")
+    val featureDisable = InputKey[Unit](key("feature-disable"), "Disables a Heroku feature")
 
-    val keys = TaskKey[Unit]("keys", "Lists Heroku registered keys")
-    val keysAdd = InputKey[Unit]("keys-add", "Adds a registed key with heroku")
-    val keysRm = InputKey[Unit]("keys-rm", "Removes a registed key with heroku")
+    // can probably refactor this into its own plugin
+    val keys = TaskKey[Unit](key("keys"), "Lists Heroku registered keys")
+    val keysAdd = InputKey[Unit](key("keys-add"), "Adds a registed key with heroku")
+    val keysRm = InputKey[Unit](key("keys-rm"), "Removes a registed key with heroku")
 
     // git settings TODO migrate these to use joshes new git plugin keys
-    val push = InputKey[Int]("push", "Pushes project to Heroku")
-    val diff = TaskKey[Int]("git-diff", "Displays a diff of untracked sources")
-    val status = TaskKey[Int]("git-status", "Display the status of your git staging area")
-    val commit = InputKey[Int]("git-commit", "Commits a staging area with an optional msg")
-    val add = InputKey[Int]("git-add", "Adds an optional list of paths to the git index, defaults to '.'")
-    val git = InputKey[Int]("exec", "Executes arbitrary git command")
+    // also rm whats not really referenced below in the direct context of heroic
+    val push = InputKey[Int](key("push"), "Pushes project to Heroku")
 
     private def key(name: String) = "hero-%s" format name
 
   }
-
-  val Hero = config("hero")
-  val Git = config("git")
 
   private def rootDir(state: State) =
     file(Project.extract(state).structure.root.toURL.getFile)
@@ -131,43 +128,18 @@ object Plugin extends sbt.Plugin {
     h(hand)
   }
 
-  def gitSettings: Seq[Setting[_]] = inConfig(Git)(Seq(
-    diff <<= diffTask,
-    status <<= statusTask,
-    commit <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
-      (argsTask, streams) map { (args, out) =>
-        args match {
-          case msg =>
-            out.log.info("commiting with msg '%s'" format msg.mkString(" "))
-            GitCli.commit(msg.mkString(" ")) ! out.log
-        }
-      }
-    },
-    add <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
-      (argsTask, streams) map { (args, out) =>
-        args match {
-          case Seq() =>
-            out.log.info("add everything")
-            GitCli.add() ! out.log
-          case paths =>
-            out.log.info("adding paths %s" format paths.mkString(" "))
-            GitCli.add(paths) ! out.log
-        }
-      }
-    },
-    git <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
-      (argsTask, streams) map { (args, out) =>
-        GitCli(args) ! out.log
-      }
+  def coreSettings: Seq[Setting[_]] = Seq(
+    hero <<= (streams) map {
+      (out) => out.log.info("Heroic is an interface for Heroku")
     }
-  ))
+  )
 
-  def appSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
-    (javaOptions in Hero) <<= (javaOptions in run)(_ match {
+  def appSettings: Seq[Setting[_]] = Seq(
+    (javaOptions in hero) <<= (javaOptions in run)(_ match {
       case Nil => Seq("-Xmx256m","-Xss2048k")
       case provided => provided
     }),
-    mainClass in Hero <<= mainClass in Runtime,
+    mainClass in hero <<= mainClass in Runtime,
     scriptName := "hero",
     script <<= scriptTask,
     procs <<= (state, target, scriptName) map {
@@ -183,9 +155,9 @@ object Plugin extends sbt.Plugin {
     slugIgnore <<= slugIgnoreTask,
     stage in Compile <<= (script, procfile, slugIgnore) map stageTask,
     equip <<= stage in Compile
-  ))
+  )
 
-  def clientSettings: Seq[Setting[_]] = inConfig(Hero)(Seq(
+  def clientSettings: Seq[Setting[_]] = Seq(
     checkDependencies <<= checkDependenciesTask,
     collaborators <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
@@ -223,9 +195,9 @@ object Plugin extends sbt.Plugin {
         }
       }
     },
-    auth <<= authTask,
-    deauth <<= deauthTask,
-    localHero <<= localHeroTask dependsOn(compile in Compile),
+    authenticate <<= authenticateTask,
+    deauthenticate <<= deauthenticateTask,
+    local <<= localTask dependsOn(compile in Compile),
     logs <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
          val remote = args match {
@@ -504,7 +476,7 @@ object Plugin extends sbt.Plugin {
                 http(cli.rename(name) as_str)
               )
             }
-            out.log.info("Renamed report subdomain to %s" format n)
+            out.log.info("Renamed remote subdomain to %s" format n.name)
             GitClient.updateRemote(n.name, remote)
             out.log.info("Updated git remote")
           } catch {
@@ -667,7 +639,7 @@ object Plugin extends sbt.Plugin {
         }
       }
     }
-  ))
+  )
 
   private def confirmBilling(log: Logger, client: HerokuClient) = {
     log.warn(
@@ -689,17 +661,11 @@ object Plugin extends sbt.Plugin {
   def withLog[T](f: Logger => T): Initialize[Task[T]] =
     (streams) map { o => f(o.log) }
 
-  def authTask: Initialize[Task[Unit]] =
+  def authenticateTask: Initialize[Task[Unit]] =
     withLog(l => Auth.acquireCredentials(l))
 
-  def deauthTask: Initialize[Task[Unit]] =
+  def deauthenticateTask: Initialize[Task[Unit]] =
     withLog(l => Auth.removeCredentials(l))
-
-  private def statusTask: Initialize[Task[Int]] =
-    exec(GitCli.status())
-
-  private def diffTask: Initialize[Task[Int]] =
-    exec(GitCli.diff())
 
   private def exec(pb: => ProcessBuilder, msg: String = "", onSuccess: String = ""): Initialize[Task[Int]] =
     withLog { l =>
@@ -760,8 +726,11 @@ object Plugin extends sbt.Plugin {
     client { cli =>
       l.info("Fetching Heroku features...\n")
       try {
+        // separated call from parse to avoid hijacking
+        // this threads class loader for too long
+        val json = http(cli.features(remote).all as_str)
         val fs = inClassLoader(classOf[Feature]) {
-          parse[Seq[Feature]](http(cli.features(remote).all as_str))
+          parse[Seq[Feature]](json)
         }
         val longest = fs.map(_.name.size).sorted.last
         val (enabled, disabled) = fs.partition(_.enabled)
@@ -857,7 +826,7 @@ object Plugin extends sbt.Plugin {
       l.info("Maintenance mode disabled.")
     }
 
-  private def localHeroTask: Initialize[Task[Unit]] =
+  private def localTask: Initialize[Task[Unit]] =
     (state, streams) map {
       (state, out) =>
         out.log.info("Running Procfile process(es). Press any key to stop.")
@@ -1080,8 +1049,8 @@ object Plugin extends sbt.Plugin {
     }
 
   private def scriptTask: Initialize[Task[File]] =
-    (mainClass in Hero, streams, fullClasspath in Runtime, state,
-      target, scriptName, javaOptions in Hero) map {
+    (mainClass in hero, streams, fullClasspath in Runtime, state,
+      target, scriptName, javaOptions in hero) map {
       (main, out, cp, state, target, sn, jvmOpts) => main match {
         case Some(mainCls) =>
           val scriptBody = Script(mainCls, cp.files map { f =>
@@ -1100,5 +1069,5 @@ object Plugin extends sbt.Plugin {
       }
     }
 
-  def heroicSettings: Seq[Setting[_]] = appSettings ++ clientSettings ++ gitSettings
+  def heroicSettings: Seq[Setting[_]] = coreSettings ++ appSettings ++ clientSettings
 }
