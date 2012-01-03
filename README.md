@@ -70,11 +70,11 @@ You can verify that they are installed locally with the setting
 
     hero-equip        # Prepares project for Heroku deployment
     hero-procfile     # Writes Heroku Procfile to project base directory
-    hero-scriptName   # Name of script-file
-    hero-scriptFile   # Target process for Heroku web profile key
+    hero-script-name   # Name of script-file
+    hero-script-file   # Target process for Heroku web profile key
     hero-script       # Generates script-file
-    hero-slugIgnored  # List of items to ignore when transfering application
-    hero-slugIgnore   # Generates a Heroku .slugignore file in the base directory
+    hero-slug-ggnored  # List of items to ignore when transfering application
+    hero-slug-ignore   # Generates a Heroku .slugignore file in the base directory
     hero-main-class    # uses sbt's mainClass to task to resolve a main class
     hero-java-options # seq of java options to use in script
 
