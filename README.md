@@ -140,8 +140,7 @@ Note: This plugin supports multiple deployment environments (i.e. multiple Herok
 
 ## dependencies
 
-- [mvn scala plugin](http://scala-tools.org/mvnsites/maven-scala-plugin)
-- [heroku gem](https://github.com/heroku/heroku#readme)
+`git`
 
 ## todo
 
