@@ -137,7 +137,17 @@ object Plugin extends sbt.Plugin {
       case Nil => Seq("-Xmx256m","-Xss2048k")
       case provided => provided
     }),
-    mainClass in hero <<= mainClass in Runtime,
+    mainClass in hero <<= (streams, mainClass in Runtime, discoveredMainClasses).map {
+      (out, main, mains) => (main, mains) match {
+        case (Some(m), _) => Some(m)
+        case (_, ms) if(!ms.isEmpty) =>
+          out.log.warn("No explict main class specified. Using first of %s" format ms)
+          ms.headOption
+        case _ =>
+          out.log.warn("No main classes discovered")
+          None
+      }
+    },
     scriptName := "hero",
     script <<= scriptTask,
     procs <<= (state, target, scriptName) map {
