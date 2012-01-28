@@ -16,9 +16,7 @@ case class Name(name: String)
 
 case class Feature(kind: String, name: String, enabled:Boolean, docs: String, summary: String)
 
-/** Provides Heroku deployment capability.
- *  assumes exported env variables
- *  REPO path to m2 maven repository */
+/** Provides Heroku deployment capability. */
 object Plugin extends sbt.Plugin {
   import ClassLoaders._
   import sbt.Keys._
