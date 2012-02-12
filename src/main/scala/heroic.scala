@@ -137,7 +137,7 @@ object Plugin extends sbt.Plugin {
       case Nil => Seq("-Xmx256m","-Xss2048k")
       case provided => provided
     }),
-    mainClass in hero <<= (streams, mainClass in Runtime, discoveredMainClasses).map {
+    mainClass in hero <<= (streams, mainClass in Runtime, discoveredMainClasses in Compile).map {
       (out, main, mains) => (main, mains) match {
         case (Some(m), _) => Some(m)
         case (_, ms) if(!ms.isEmpty) =>
