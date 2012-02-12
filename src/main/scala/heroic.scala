@@ -945,41 +945,18 @@ object Plugin extends sbt.Plugin {
     client { cli =>
       // todo, check for git support before attempting to create a remote instance
       l.info("Creating remote Heroku application. (remote name '%s')" format remote)
-      val app = parse[Map[String, String]](
-        http(cli.create() as_str)
-      )
-      val (webUrl, gitUrl) = http(cli.info(app("name")) <> { xml =>
-        def attr(name: String) = (xml \\ "app" \ name).text
-          (attr("web_url"), attr("git_url"))
-        })
+      val cresp =  http(cli.create() as_str)
+      val app = parse[Map[String, String]](cresp)
+      val info = http(cli.info(app("name")) as_str)
+      val infom = parse[Map[String, String]](info)
+      val (webUrl, gitUrl) = (infom("web_url"), infom("git_url"))
 
-        // fixme: only rec 406?
-        def checkStatus: Unit = {
-          dispatch.Http.x(cli.appStatus(app("name"))){
-            case (201, _, _) =>
-              l.info(
-                "Created remote Heroku application %s" format app("name")
-              )
-              l.info(
-                "Stack: %s\nCreate Status: %s\nDynos: %s\nWorkers: %s" format(
-                  app("stack"),
-                  app("create_status"),
-                  app("dynos"),
-                  app("workers")))
-            case (code, h, _) =>
-              l.info("code %s headers %s" format(code, h))
-            Thread.sleep(1000)
-            checkStatus
-          }
-        }
-
-        //checkStatus
-        l.info("Created app %s" format app("name"))
-        l.info("%s | %s" format(webUrl, gitUrl))
-        val stat = GitClient.addRemote(app("name"), remote = remote)
-        if(stat > 0) l.error("Error adding git remote heroku")
-        else l.info("Added git remote heroku")
-      }
+      l.info("Created app %s" format app("name"))
+      l.info("%s | %s" format(webUrl, gitUrl))
+      val stat = GitClient.addRemote(app("name"), remote = remote)
+      if(stat > 0) l.error("Error adding git remote heroku")
+      else l.info("Added git remote heroku")
+    }
 
   private def destroyTask(l: Logger, remote: String) = {
     val confirm = ask(
