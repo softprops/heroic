@@ -479,10 +479,10 @@ object Plugin extends sbt.Plugin {
         client { cli =>
           out.log.info("Requesting subdomain")
           try {
+            val renameResponse = http(cli.rename(name) as_str)
+            println("rename response %s" format renameResponse)
             val n = inClassLoader(classOf[Name]){
-              parse[Name](
-                http(cli.rename(name) as_str)
-              )
+              parse[Name](renameResponse)
             }
             out.log.info("Renamed remote subdomain to %s" format n.name)
             GitClient.updateRemote(n.name, remote)
@@ -867,13 +867,14 @@ object Plugin extends sbt.Plugin {
   private def infoTask(l: Logger, remote: String) =
     client { cli =>
       l.info("Fetching App info")
-      http(cli.info(HerokuClient.requireApp(remote)) <> { xml =>
-        def attr(name: String) = (xml \\ "app" \ name).text
-        l.info("=== %s" format attr("name"))
-        l.info("owner: %s" format attr("owner"))
-        l.info("web url: %s" format attr("web_url"))
-        l.info("git url: %s" format attr("git_url"))
-      })
+      val info = http(cli.info(HerokuClient.requireApp(remote)) as_str)
+      val attr = parse[Map[String, String]](info)
+      //  def attr(name: String) = (xml \\ "app" \ name).text
+      l.info("=== %s" format attr("name"))
+      l.info("owner: %s" format attr("owner_email"))
+      l.info("web url: %s" format attr("web_url"))
+      l.info("git url: %s" format attr("git_url"))
+      l.info("dynos: %s | workers: %s" format(attr("dynos"), attr("workers")))
     }
 
   private def workersTask(l: Logger, remote: String, n: Int) =
