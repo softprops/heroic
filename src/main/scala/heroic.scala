@@ -686,11 +686,12 @@ object Plugin extends sbt.Plugin {
   private def keysTask: Initialize[Task[Unit]] =
     withLog { l =>
       client { cli =>
-        http(cli.keys.show <> { xml =>
-          (xml \\ "keys" \\ "key").map(_ \ "contents" text).foreach(
-            l.info(_)
-          )
-        })
+        val keys = http(cli.keys.show as_str)
+        val keysm = parse[Seq[Map[String, String]]](keys)
+        keysm map { keym =>
+          l.info("=== %s" format keym("email"))
+          l.info(keym("contents"))
+        }
       }
     }
 
