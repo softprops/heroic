@@ -869,7 +869,6 @@ object Plugin extends sbt.Plugin {
       l.info("Fetching App info")
       val info = http(cli.info(HerokuClient.requireApp(remote)) as_str)
       val attr = parse[Map[String, String]](info)
-      //  def attr(name: String) = (xml \\ "app" \ name).text
       l.info("=== %s" format attr("name"))
       l.info("owner: %s" format attr("owner_email"))
       l.info("web url: %s" format attr("web_url"))
