@@ -466,7 +466,6 @@ object Plugin extends sbt.Plugin {
         }
       }
     },
-    // fixme
     rename <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         val (remote, name) = args match {
