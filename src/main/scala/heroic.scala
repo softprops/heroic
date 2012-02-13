@@ -12,8 +12,6 @@ case class Proc(ptype: String, cmd: String)
 case class Domain(created_at: String, updated_at: String, default: Option[String],
                   domain: String, id: Int, app_id: String, base_domain: String)
 
-case class Name(name: String)
-
 case class Feature(kind: String, name: String, enabled:Boolean, docs: String, summary: String)
 
 /** Provides Heroku deployment capability. */
@@ -480,16 +478,15 @@ object Plugin extends sbt.Plugin {
           out.log.info("Requesting subdomain")
           try {
             val renameResponse = http(cli.rename(name) as_str)
-            println("rename response %s" format renameResponse)
-            val n = inClassLoader(classOf[Name]){
-              parse[Name](renameResponse)
-            }
-            out.log.info("Renamed remote subdomain to %s" format n.name)
-            GitClient.updateRemote(n.name, remote)
+            val n = parse[Map[String, String]](renameResponse)
+            out.log.info("Renamed remote subdomain to %s" format n("name"))
+            GitClient.updateRemote(n("name"), remote)
             out.log.info("Updated git remote")
           } catch {
             case dispatch.StatusCode(406, msg) =>
-              out.log.warn("Fail to rename app. %s" format msg)
+              out.log.warn("Failed to rename app. %s" format msg)
+            case dispatch.StatusCode(404, msg) =>
+              out.log.warn("Failed to rename app. %s" format msg)
           }
         }
       }
