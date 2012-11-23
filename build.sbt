@@ -6,17 +6,10 @@ name := "heroic"
 
 scalacOptions += "-deprecation"
 
-version <<= sbtVersion(v =>
-  if(v.startsWith("0.11")) "0.1.0-SNAPSHOT"
-  else if(v.startsWith("0.10")) "0.1.0-%s-SNAPSHOT".format(v)
-  else error("unsupported version of sbt %s" format v)
-)
+version := "0.1.0-SNAPSHOT"
 
 //seq(ScriptedPlugin.scriptedSettings: _*)
 
-libraryDependencies ++= Seq(
-  "net.databinder" %% "dispatch-http" % "0.8.5",
-  "com.codahale" %% "jerkson" % "0.5.0"
-)
+libraryDependencies += "net.databinder.dispatch" %% "dispatch-lift-json" % "0.9.4"
 
-resolvers += "coda" at "http://repo.codahale.com"
+libraryDependencies += "org.slf4j" % "slf4j-jdk14" % "1.6.2"
