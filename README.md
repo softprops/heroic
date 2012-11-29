@@ -2,24 +2,24 @@
 
 > because sometimes your scala deploy need a hero
 
-Aims to be make deploying scala application as easy as pie. well, as easy as it should be.
+An sbt interface for remotely administering and deploying [heroku][heroku] hosted applications
 
 ## install
 
-1. For starters, you'll need an account on [heroku](https://api.heroku.com/signup)
+1. For starters, you'll need an account on [heroku][signup]
 
 2. Install the sbt plugin (note not yet published)
 
 Comin' at ya soon
 
-3. deploy
+3. Deploy
 
-inside sbt
+Inside sbt you will need to first authenticate with heroku, only once (you can undo this later)
 
-    sbt> hero:authenticate
+    sbt> hero-authenticate
     [info] Authenticate with Heroku
-    Email: you@somedomain
-    Password: ****
+    Enter your API key (from https://dashboard.heroku.com/account): ********************************
+
     INF: [console logger] dispatch: api.heroku.com POST /login HTTP/1.1
     [info] Wrote credentials to ~/.heroku/credentials
     [info] Heroku requires a public ssh key
@@ -149,3 +149,5 @@ Note: This plugin supports multiple deployment environments (i.e. multiple Herok
 Doug Tangren (softprops) 2011-2012
 
 [git]: http://git-scm.com/
+[heroku]: http://www.heroku.com/
+[signup]: https://api.heroku.com/signup
