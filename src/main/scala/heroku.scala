@@ -190,10 +190,28 @@ trait Methods { self: Client =>
       complete(api.DELETE / "user" / "keys")
   }
 
-  def logs = new {
-    def lines(name: String, num: Int = 20, ps: Option[String] = None) =
-      complete(api / "apps" / name / "logs" << Map("logplex" -> "true"))
-  }
+  case class LogBuilder(app: String,
+                        linesval: Int = 20,
+                        psval: Option[String] = None,
+                        srcval: Option[String] = None,
+                        tailval: Option[Int] = None)
+       extends Client.Completion {
+         def lines(n: Int) = copy(linesval = n)
+         def ps(name: String) = copy(psval = Some(name))
+         def source(src: String) = copy(srcval = Some(src))
+         def tail = copy(tailval = Some(1))
+         private def pmap =
+           Map("logplex" -> "true",
+               "num" -> linesval.toString) ++
+               tailval.map("tail" -> _.toString)
+               psval.map("ps" -> _) ++
+               srcval.map("source" -> _)
+           
+         override def apply[T](handler: Client.Handler[T]) =
+           request(api / "apps" / app / "logs" <<? pmap)(handler)
+       }
+
+  def logs(app: String) = LogBuilder(app)
 
   def ps(app: String) = new {
     def list =

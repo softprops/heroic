@@ -188,11 +188,15 @@ object Plugin extends sbt.Plugin {
       (argsTask, streams) map { (args, out) =>
          val remote = remoteOption(args)
          client { cli =>
-           out.log.info("Fetching recent remote logs")
-           out.log.info(cli.logs.lines(requireApp(remote))(as.String)())
-           //http(cli.logs(remote) >~ { src =>
-           //   src.getLines().foreach(l => out.log.info(l))
-           // })
+           val app = requireApp(remote)
+           out.log.info("Fetching recent remote logs for %s" format app)
+           val logurl = cli.logs(app)(as.String)()
+           out.log.info("log url %s" format logurl)
+           out.log.info(Http(url(logurl) > as.String)())
+ //          Http(url(logurl) > as.stream.Lines({ line =>
+ //            println("line %s" format line)
+ //            out.log.info(line)
+ //          }))
          }
       }
     },
