@@ -15,10 +15,14 @@ object GitClient {
          }
       )
 
+  def push(remote: String, log: sbt.Logger): Int =
+    sbt.Process("git push %s" format remote) ! log
+
   def remoteRm(remote: String) =
     sbt.Process("git remote rm %s" format remote) !
 
-  def updateRemote(app: String, remote: String = "heroku",
+  def updateRemote(app: String,
+                   remote: String = "heroku",
                    host: String = "heroku.com") = {
     if(remotes.isDefinedAt(remote)) {
       remoteRm(remote)

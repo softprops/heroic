@@ -3,29 +3,20 @@ package heroic
 import sbt._
 import Project.Initialize
 
-case class Release(env: Map[String, String], pstable: Map[String, String],
-                   commit: Option[String], descr: String, addons: Seq[String],
-                   created_at: String, user: String, name: String)
+case class Proc(typ: String, cmd: String)
 
-case class Proc(ptype: String, cmd: String)
-
-case class Domain(created_at: String, updated_at: String, default: Option[String],
-                  domain: String, id: Int, app_id: String, base_domain: String)
-
-case class Feature(kind: String, name: String, enabled:Boolean, docs: String, summary: String)
-
-/** Provides Heroku deployment capability. */
+/** Heroku interface for sbt */
 object Plugin extends sbt.Plugin {
   import sbt.Keys._
   import HeroKeys._
-  import heroic.{ Git => GitCli }
   import Prompt._
   import dispatch._
   import net.liftweb.json._
 
-  private [this] val DefaultRemote = "heroku"
+  private val DefaultRemote = "heroku"
 
   val stage = TaskKey[Unit]("stage", "Heroku installation hook")
+
   def stageTask(script: File, procfile: File, slugfile: File) = { /* noop */ }
 
   object HeroKeys {
@@ -59,8 +50,7 @@ object Plugin extends sbt.Plugin {
     val create = InputKey[Unit](key("create"), "Invokes Heroku client create command")
     val destroy = InputKey[Unit](key("destroy"), "Deletes remote application")
     val info = InputKey[Unit](key("info"), "Displays Heroku deployment info")
-    val workers = InputKey[Unit](key("workers"), "Scale the number of your apps worker processes")
-    val dynos = InputKey[Unit](key("dynos"), "Scale the number or your apps dynos")
+    val scale = InputKey[Unit](key("scale"), "Scale the number of processes for a given process type")
     val addons = InputKey[Unit](key("addons"), "Lists installed Heroku addons")
     val addonsAvailable = InputKey[Unit](key("addons-available"), "Lists available Heroku addons")
     val addonsInstall = InputKey[Unit](key("addons-install"), "Install a Heroku addon by name")
@@ -85,8 +75,7 @@ object Plugin extends sbt.Plugin {
     // also rm whats not really referenced below in the direct context of heroic
     val push = InputKey[Int](key("push"), "Pushes project to Heroku")
 
-    private def key(name: String) = "hero-%s" format name
-
+    private def key(name: String) = name
   }
 
   private def remoteOption(args: Seq[String]) =
@@ -109,7 +98,7 @@ object Plugin extends sbt.Plugin {
 
   private def client[T](f: Client => T): T =
     Auth.credentials.map(k => f(new Client(BasicAuth(k))))
-      .getOrElse(sys.error("Not authenticated. Try hero:auth"))
+      .getOrElse(sys.error("Not authenticated. Try hero::authenticate"))
 
   def coreSettings: Seq[Setting[_]] = Seq(
     hero <<= (streams) map {
@@ -117,8 +106,9 @@ object Plugin extends sbt.Plugin {
     }
   )
 
+  /** settings used for application deployment and staging */
   def appSettings: Seq[Setting[_]] = Seq(
-    (javaOptions in hero) <<= (javaOptions in run) map {
+    javaOptions in hero <<= (javaOptions in run) map {
       case Nil => Seq("-Xmx256m","-Xss2048k")
       case provided => provided
     },
@@ -129,70 +119,72 @@ object Plugin extends sbt.Plugin {
           out.log.warn("No explict main class specified. Using first of %s" format ms)
           ms.headOption
         case _ =>
-          out.log.warn("No main classes discovered")
+          out.log.warn("No main classes resolved")
           None
       }
     },
-    scriptName := "hero",
-    script <<= scriptTask,
-    procs <<= (state, target, scriptName) map {
+    scriptName in hero := "hero",
+    script in hero <<= scriptTask,
+    procs in hero <<= (state, target, scriptName in hero) map {
       (state, t, s) => {
         Seq(Proc("web", "sh %s/%s" format(relativeToRoot(state, t).get, s)))
       }
     },
-    procfile <<= procfileTask,
-    slugIgnored <<= (state, sourceDirectory in Test) map {
+    procfile in hero <<= procfileTask,
+    slugIgnored in hero <<= (state, sourceDirectory in Test) map {
       (state, sd) =>
         Seq(relativeToRoot(state, sd).get)
     },
-    slugIgnore <<= slugIgnoreTask,
-    stage in Compile <<= (script, procfile, slugIgnore) map stageTask,
-    equip <<= stage in Compile
+    slugIgnore in hero <<= slugIgnoreTask,
+    stage in Compile <<= (script in hero, procfile in hero, slugIgnore in hero) map stageTask,
+    equip in hero <<= stage in Compile
   )
 
+  /** settings used for interacting with the heroku api */
   def clientSettings: Seq[Setting[_]] = Seq(
     checkDependencies <<= checkDependenciesTask,
-    collaborators <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+
+    collaborators in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         collaboratorsTask(out.log, remoteOption(args))
       }
     },
 
-    collaboratorsAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    collaboratorsAdd in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         val (remote, email) = args match {
-          case Seq(email) => ("heroku", email)
+          case Seq(email) => (DefaultRemote, email)
           case Seq(remote, email) => (remote, email)
-          case _ => sys.error("usage hero:collaborators-add <email>")
+          case _ => sys.error("usage hero::collaborators-add <email>")
         }
         client { cli =>
-          out.log.info(
-            cli.collaborators(requireApp(remote)).add(email)(as.String)()
-          )
+          val app = requireApp(remote)
+          out.log.info("Adding collaborator %s for %s" format(email, app))
+          out.log.info(cli.collaborators(app).add(email)(as.String)())
         }
       }
     },
 
-    collaboratorsRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    collaboratorsRm in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         val (remote, email) = args match {
           case Seq(email) => ("heroku", email)
           case Seq(remote, email) => (remote, email)
-          case _ => sys.error("usage hero:collaborators-rm <email>")
+          case _ => sys.error("usage hero::collaborators-rm <email>")
         }
         client { cli =>
-          out.log.info(
-            cli.collaborators(requireApp(remote)).remove(email)(as.String)()
-          )
+          val app = requireApp(remote)
+          out.log.info("Removing collaborator %s for %s" format(email, app))
+          out.log.info(cli.collaborators(app).remove(email)(as.String)())
         }
       }
     },
 
-    authenticate <<= authenticateTask,
-    deauthenticate <<= deauthenticateTask,
-    local <<= localTask dependsOn(compile in Compile),
+    authenticate in hero <<= authenticateTask,
+    deauthenticate in hero <<= deauthenticateTask,
+    local in hero <<= localTask dependsOn(compile in Compile),
 
-    logs <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    logs in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
          val remote = remoteOption(args)
          client { cli =>
@@ -205,74 +197,61 @@ object Plugin extends sbt.Plugin {
       }
     },
 
-    ps <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    ps in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         psTask(out.log, remoteOption(args))
       }
     },
 
-    create <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    create in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         createTask(out.log, remoteOption(args))
       }
     },
 
-    destroy <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    destroy in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         destroyTask(out.log, remoteOption(args))
       }
     },
 
-    push <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    push in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         pushTask(out.log, remoteOption(args))
       }
     },
 
-    info <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    info in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         infoTask(out.log, remoteOption(args))
       }
     },
 
-    workers <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    scale in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
-        val (remote, n) = args match {
-          case Seq(remote, n) =>
-            (remote, n.toInt)
-          case Seq(n) =>
-            ("heroku", n.toInt)
-          case _ => sys.error("usage: workers <n>")
+        val (remote, typ, n) = args match {
+          case Seq(remote, typ, n) =>
+            (remote, typ, n.toInt)
+          case Seq(typ, n) =>
+            (DefaultRemote, typ, n.toInt)
+          case _ => sys.error("usage: hero::scale <type> <n>")
         }
-        workersTask(out.log, remote, n)
+        scaleTask(out.log, remote, typ, n)
       }
     },
 
-    dynos <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
-      (argsTask, streams) map { (args, out) =>
-        val (remote, n) = args match {
-          case Seq(remote, n) =>
-            (remote, n.toInt)
-          case Seq(n) =>
-            ("heroku", n.toInt)
-          case _ => sys.error("usage: dynos <n>")
-        }
-        dynosTask(out.log, remote, n)
-      }
-    },
-
-    config <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    config in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         configTask(out.log, remoteOption(args))
       }
     },
 
-    configSet <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    configSet in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         val (remote, key, value) = args match {
           case Seq(key, value) => (DefaultRemote, key, value)
           case Seq(remote, key, value) => (remote, key, value)
-          case _ => sys.error("usage: hero:conf-add <key> <val>")
+          case _ => sys.error("usage: hero::config-set <key> <val>")
         }
         client { cli =>
           val app = requireApp(remote)
@@ -288,12 +267,12 @@ object Plugin extends sbt.Plugin {
       }
     },
 
-    configDelete <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    configDelete in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         val (remote, key) = args match {
           case Seq(key) => (DefaultRemote, key)
           case Seq(remote, key) => (remote, key)
-          case _ => sys.error("usage: hero:conf-rm <key>");
+          case _ => sys.error("usage: hero::config-rm <key>");
         }
         client { cli =>
           val app = requireApp(remote)
@@ -309,24 +288,24 @@ object Plugin extends sbt.Plugin {
       }
     },
 
-    addons <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    addons in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         addonsTask(out.log, remoteOption(args))
       }
     },
 
-    addonsAvailable <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    addonsAvailable in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         addonsAvailableTask(out.log, remoteOption(args))
       }
     },
 
-    addonsInstall <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    addonsInstall in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         val (remote, addon) = args match {
           case Seq(addon) => (DefaultRemote, addon)
           case Seq(remote, addon) => (remote, addon)
-          case _ => sys.error("usage hero:addons-add <feature>")
+          case _ => sys.error("usage hero::addons-install <feature>")
         }
 
         client { cli =>
@@ -353,148 +332,175 @@ object Plugin extends sbt.Plugin {
       }
     },
 
-    addonsUninstall <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    addonsUninstall in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         val (remote, feature) = args match {
-          case Seq(feature) => ("heroku", feature)
+          case Seq(feature) => (DefaultRemote, feature)
           case Seq(remote, feature) => (remote, feature)
-          case _ => sys.error("usage hero:addons-rm <feature>")
+          case _ => sys.error("usage hero::addons-uninstall <feature>")
         }
         client { cli =>
-          out.log.info("Requesting addon removal")
-          out.log.info(cli.addons.uninstall(requireApp(remote), feature)(as.String)())
-          /*try {
-            http(cli.addons(remote).rm(feature) >|)
-            out.log.info("Removed addon %s" format feature)
-          } catch {
-            case dispatch.StatusCode(422, msg) =>
-              val resp = parse[Map[String, String]](msg)
-              sys.error(
-                "Error removing addon %s" format resp("error")
-              )
-          }*/
+          val app = requireApp(remote)
+          out.log.info("Requesting addon removal for %s" format app)
+          val req = cli.addons.uninstall(app, feature)(as.lift.Json)
+          val status = for {
+            JField("status", JString(status)) <- req()
+          } yield status
+          if  (status.isEmpty) out.log.warn("Addon removal failed")
+          else out.log.info("Add on removal status: %s" format status(0))
         }
       }
     },
     
-    maintenanceOn <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    maintenanceOn in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         maintenanceOnTask(out.log, remoteOption(args))
       }
     },
 
-    maintenanceOff <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    maintenanceOff in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         maintenanceOffTask(out.log, remoteOption(args))
       }
     },
 
-    releases <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    releases in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         releasesTask(out.log, remoteOption(args))
       }
     },
-    releaseInfo <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+
+    releaseInfo in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         val (remote, rel) = args match {
-          case Seq(rel) => ("heroku", rel)
+          case Seq(rel) => (DefaultRemote, rel)
           case Seq(remote, rel) => (remote, rel)
-          case _ => sys.error("usage: hero:release-info <rel>")
+          case _ => sys.error("usage: hero::release-info <rel>")
         }
-        out.log.info("Fetching release listing")
+        val app = requireApp(remote)
+        out.log.info("Fetching release listing for %s" format app)
         client { cli =>
-          out.log.info(cli.releases(requireApp(remote)).info(rel)(as.String)())
-        }
-      }
-    },
-
-    rollback <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
-      (argsTask, streams) map { (args, out) =>
-        val (remote, to) = args match {
-          case Seq(to) => ("heroku", to)
-          case Seq(remote, to) => (remote, to)
-          case _ => sys.error("usage: hero:rollback <to>")
-        }
-        client { cli =>
-          out.log.info("Rolling back release")
-          out.log.info(
-            cli.releases(requireApp(remote)).rollback(to)(as.String)()
-          )
-        }
-      }
-    },
-
-    rename <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
-      (argsTask, streams) map { (args, out) =>
-        val (remote, name) = args match {
-          case Seq(name) => (DefaultRemote, name)
-          case Seq(remote, name) => (remote, name)
-          case _ => sys.error("usage: hero:rename <subdomain>")
-        }
-        client { cli =>
-          val app = requireApp(remote)
-          out.log.info("Requesting to rename subdomain %s to %s" format(app, name))
-          try {
-            val req = cli.apps.rename(app, name)(as.lift.Json)
-            val resp = for {
-              JObject(fields)                  <- req()
-              JField("name", JString(newname)) <- fields
-            } yield newname
-            resp match {
-              case Nil =>
-                out.log.warn("failed to rename %s to %s" format(app, name))
-              case newname :: _ =>
-                out.log.info("renamed app to %s" format newname)
-                GitClient.updateRemote(newname, remote)
-                out.log.info("updated git remote")
-            }
-          } catch {
-            case dispatch.StatusCode(406) =>
-              out.log.warn("Failed to rename app.")
-            case dispatch.StatusCode(404) =>
-              out.log.warn("Failed to rename app.")
+          val req = cli.releases(app).info(rel)(as.lift.Json)
+          val release = for {
+            JObject(fields)                      <- req()
+            JField("name", JString(name))        <- fields
+            JField("descr", JString(desc))       <- fields
+            JField("user", JString(user))        <- fields
+            JField("commit", JString(commit))    <- fields
+            JField("env", JObject(envfields))    <- fields
+            JField("pstable", JObject(psfields)) <- fields
+          } yield {
+            def it(ary: List[JField]): Iterable[(String, String)] = for {
+              JField(key, JString(value)) <- ary
+            } yield (key, value)
+            (name, desc, user, commit,
+             it(envfields),
+             it(psfields))
+          }
+          if (release.isEmpty) out.log.info("Release %s for %s not found" format(rel, app))
+          else release(0) match {
+            case (name, desc, user, commit, env, processes) =>
+              out.log.info(
+                """
+                | %s release %s
+                | Commit %s by %s
+                | %s
+                | Processes:
+                | %s
+                | Env:
+                | %s
+                """.stripMargin.format(
+                  app, name,
+                  user, commit,
+                  desc,
+                  processes.map { case (k, v) => "%s : %s".format(k, v) } mkString("\n"),
+                  env.map       { case (k, v) => "%s : %s".format(k, v) } mkString("\n")))
           }
         }
       }
     },
 
-    domains <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    rollback in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        val (remote, to) = args match {
+          case Seq(to) => (DefaultRemote, to)
+          case Seq(remote, to) => (remote, to)
+          case _ => sys.error("usage: hero::rollback <to>")
+        }
+        client { cli =>
+          val app = requireApp(remote)
+          out.log.info("Rolling back %s release" format app)
+          out.log.info(
+            cli.releases(app).rollback(to)(as.String)()
+          )
+        }
+      }
+    },
+
+    rename in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+      (argsTask, streams) map { (args, out) =>
+        val (remote, name) = args match {
+          case Seq(name) => (DefaultRemote, name)
+          case Seq(remote, name) => (remote, name)
+          case _ => sys.error("usage: hero::rename <subdomain>")
+        }
+        client { cli =>
+          val app = requireApp(remote)
+          out.log.info("Requesting to rename subdomain %s to %s" format(app, name))
+          val req = cli.apps.rename(app, name)(as.lift.Json)
+          val resp = for {
+            JObject(fields)                  <- req()
+            JField("name", JString(newname)) <- fields
+          } yield newname
+          resp match {
+            case Nil =>
+              out.log.warn("failed to rename %s to %s" format(app, name))
+            case newname :: _ =>
+              out.log.info("Renamed app to %s" format newname)
+            GitClient.updateRemote(newname, remote)
+            out.log.info("Updated git remote")
+          }
+        }
+      }
+    },
+
+    domains in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         domainsTask(out.log, remoteOption(args))
       }
     },
 
-    domainsAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    domainsAdd in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         val (remote, dom) =
           args match {
-            case dom :: Nil => ("heroku", dom)
+            case dom :: Nil => (DefaultRemote, dom)
             case remote :: dom :: Nil => (remote, dom)
             case _ => sys.error(
-              "usage: hero:domains-add <domain>"
+              "usage: hero::domains-add <domain>"
             )
           }
         domainsAddTask(out.log, remote, dom)
       }
     },
 
-    domainsRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    domainsRm in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         val (remote, dom) =
           args match {
-            case dom :: Nil => ("heroku", dom)
+            case dom :: Nil => (DefaultRemote, dom)
             case remote :: dom :: Nil => (remote, dom)
             case _ => sys.error(
-              "usage: hero:domains-rm <domain>"
+              "usage: hero::domains-rm <domain>"
             )
           }
         domainsRmTask(out.log, remote, dom)
       }
     },
 
-    keys <<= keysTask,
+    keys in hero <<= keysTask,
 
-    keysAdd <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    keysAdd in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         client { cli =>
           args match {
@@ -505,12 +511,13 @@ object Plugin extends sbt.Plugin {
                   out.log.info("Registered key")
                 case f => sys.error("%s does not exist" format f)
               }
-            case _ => sys.error("usage: hero:keys-add <path-to-key>")
+            case _ => sys.error("usage: hero::keys-add <path-to-key>")
           }
         }
       }
     },
-    keysRm <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+
+    keysRm in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
         client { cli =>
           args match {
@@ -518,41 +525,24 @@ object Plugin extends sbt.Plugin {
               val yn = ask("Are you sure you want to deregister all app keys? [Y/N] ") {
                 _.trim.toLowerCase
               }
-              if(Prompt.Okays contains yn) {
+              if (Prompt.Okays contains yn) {
                 out.log.info("Deregistering keys")
-                /*try {
-                  out.log.info(http(cli.keys.clear as_str))
-                  out.log.info("Deregistered keys")
-                } catch {
-                  case dispatch.StatusCode(404, msg) =>
-                    out.log.warn(msg)
-                }*/
+                cli.keys.clear(as.String)
               } else if(Prompt.Nos contains yn) {
                 out.log.info("Canceling request")
               } else sys.error("Unexpected response %s" format yn)
-            case kf =>
-              file(kf mkString(" ")) match {
-                case f if(f.exists) =>
-                  val yn = ask("Are you sure you want to deregister this key? [Y/N] ") {
-                    _.trim.toLowerCase
-                  }
-                  if(Prompt.Okays contains yn) {
-                    out.log.info("Deregistering key")
-                    try {
-                      val contents = IO.read(f)
-                      out.log.debug(contents)
-                      out.log.info(cli.keys.remove(contents)(as.String)())
-                      out.log.info("Deregistered key")
-                    } catch {
-                      case dispatch.StatusCode(404) =>
-                        out.log.warn("not found")
-                    }
-                  } else if(Prompt.Nos contains yn) {
-                    out.log.info("Canceling request")
-                  } else sys.error("Unexpected response %s" format yn)
-                case f => sys.error("%s does not exist" format f)
+            case Seq(userathost) =>
+              val yn = ask("Are you sure you want to deregister this key? [Y/N] ") {
+                _.trim.toLowerCase.replaceAll("[.]","%2E")
               }
-            //case _ => sys.error("usage: hero:keys-rm <path-to-key>")
+              if (Prompt.Okays contains yn) {
+                out.log.info("Deregistering key %s" format userathost)
+                out.log.info(cli.keys.remove(userathost)(as.String)())
+                out.log.info("Deregistered key %s" format userathost)
+              }
+              else if (Prompt.Nos contains yn) out.log.info("Canceling request")
+              else sys.error("Unexpected response %s" format yn)
+            case _ => sys.error("usage: hero::keys-rm <user@host>")
           }
         }
       }
@@ -567,14 +557,6 @@ object Plugin extends sbt.Plugin {
 
   def deauthenticateTask: Initialize[Task[Unit]] =
     withLog(l => Auth.removeCredentials(l))
-
-  private def exec(pb: => ProcessBuilder, msg: String = "", onSuccess: String = ""): Initialize[Task[Int]] =
-    withLog { l =>
-        if(!msg.isEmpty) l.info(msg)
-        val stat = pb ! l
-        if(stat == 0 && !onSuccess.isEmpty) l.info(onSuccess)
-        stat
-    }
 
   private def keysTask: Initialize[Task[Unit]] =
     withLog { l =>
@@ -594,7 +576,20 @@ object Plugin extends sbt.Plugin {
 
   private def collaboratorsTask(l: Logger, remote: String) =
     client { cli =>
-      l.info(cli.collaborators(requireApp(remote)).list(as.String)())
+      val app = requireApp(remote)
+      val req = cli.collaborators(app).list(as.lift.Json)
+      val collabs = for {
+        JArray(cx)                        <- req()
+        JObject(fields)                   <- cx
+        JField("email", JString(email))   <- fields
+        JField("access", JString(access)) <- fields
+      } yield (email, access)
+      l.info("Collaborators on %s" format app)
+      if (collabs.isEmpty) l.info("No collaborators")
+      else collabs.foreach {
+        case (e,a) =>
+          l.info("%s (%s)" format(e, a))
+      }
     }
 
   private def domainsTask(l: Logger, remote: String) =
@@ -621,7 +616,7 @@ object Plugin extends sbt.Plugin {
         JObject(fields)                <- req()
         JField("domain", JString(dom)) <- fields
       } yield dom
-      if (domains.isEmpty) l.warn("domain %s was already taken" format domain)
+      if (domains.isEmpty) l.warn("Domain %s was already taken" format domain)
       else l.info("Added Heroku domain %s" format domains(0))
     }
 
@@ -633,28 +628,25 @@ object Plugin extends sbt.Plugin {
         JObject(fields)                <- req()
         JField("domain", JString(dom)) <- fields
       } yield dom
-      if (domains.isEmpty) l.warn("failed to remove domain %s" format domain)
+      if (domains.isEmpty) l.warn("Failed to remove domain %s" format domain)
       else l.info("Removed domain %s" format domains(0))
     }
 
-  private def printRelease(r: Release, log: Logger, details: Boolean = false) = {
-    log.info("=== %s" format r.name)
-    log.info("created %s by %s %s" format(r.created_at, r.user, 
-      if(r.commit isDefined) "(%s)" format(r.commit.get) else ""
-    ))
-    if(details) {
-      log.info("ps table:")
-      printMap(r.pstable, log)
-      log.info("env:")
-      printMap(r.env, log)
-      log.info("addons:")
-      r.addons.foreach(log.info(_))
-    }
-  }
-
   private def releasesTask(l: Logger, remote: String) =
     client { cli =>
-      l.info(cli.releases(requireApp(remote)).list(as.String)())
+      val app = requireApp(remote)
+      l.info("Fetching releases for %s" format app)
+      val req = cli.releases(app).list(as.lift.Json)
+      val releases = for {
+        JArray(rx)                        <- req()
+        JObject(fields)                   <- rx
+        JField("name", JString(name))     <- fields
+        JField("commit", JString(commit)) <- fields
+      } yield (name, commit)
+      if (releases.isEmpty) l.info("No releases")
+      else releases.foreach {
+        case (name, commit) => "%s (%s)\n".format(name, commit)
+      }
     }
 
   private def maintenanceOnTask(l: Logger, remote: String) =
@@ -691,41 +683,70 @@ object Plugin extends sbt.Plugin {
   private def psTask(l: Logger, remote: String) =
     client { cli =>
       val app = requireApp(remote)
-      l.info("Fetching process info for %s" format app)      
-      println(cli.ps(app).list(as.String)())
-      /*val px = parse[Seq[Map[String, String]]](
-        http(cli.ps(remote) as_str)
-      )
-      px.foreach { p =>
-        l.info(
-          "%s %s %s" format(
-            p("process"), p("pretty_state"), p("command")
-          )
-        )
-      }*/
+      l.info("Fetching process info for %s" format app)
+      val req = cli.ps(app).list(as.lift.Json)
+      val processes = for {
+        JArray(px)                             <- req()
+        JObject(fields)                        <- px
+        JField("process", JString(process))    <- fields
+        JField("pretty_state", JString(state)) <- fields
+        JField("command", JString(cmd))        <- fields
+      } yield (process, state, cmd)
+      if (processes.isEmpty) l.warn("No live processes %s" format req())
+      else processes.foreach {
+        case (p, s, c) => l.info("%s %s %s" format (p,s,c))
+      }
     }
 
   private def infoTask(l: Logger, remote: String) =
     client { cli =>
-      l.info("Fetching App info")
-      l.info(cli.apps.info(requireApp(remote))(as.String)())
+      val app = requireApp(remote)
+      l.info("Fetching app info for %s" format app)
+      val req = cli.apps.info(app)(as.lift.Json)
+      val inf = for {
+        JObject(fields)                     <- req()
+        JField("name", JString(name))       <- fields
+        JField("stack", JString(stack))     <- fields
+        JField("git_url", JString(giturl))  <- fields
+        JField("web_url", JString(weburl))  <- fields
+        JField("dynos", JInt(dynos))        <- fields
+        JField("workers", JInt(workers))    <- fields
+        JField("slug_size", slug)           <- fields
+        JField("repo_size", repo)           <- fields
+      } yield (name, stack, giturl, weburl, dynos, workers, slug, repo)
+      if (inf.isEmpty) l.warn("Info for %s could not be retrieved %s" format(app, req()))
+      else inf(0) match {
+        case (name, stack, giturl, weburl,
+              dynos, workers, slug, repo) => l.info(
+          """
+          | %s (using %s)
+          | git: %s
+          | http: %s
+          | dynos: %s
+          | workers: %s
+          """.stripMargin.format(
+            name, stack,
+            giturl,
+            weburl,
+            dynos,
+            workers
+          )
+        )
+      }
     }
 
-  private def workersTask(l: Logger, remote: String, n: Int) =
+  private def scaleTask(l: Logger, remote: String, typ: String, n: Int) =
     client { cli =>
-      l.info("Scaling App Workers")
-      //l.info(http(cli.workers(n, HerokuClient.requireApp(remote)) as_str))
-    }
-
-  private def dynosTask(l: Logger, remote: String, n: Int) =
-    client { cli =>
-      l.info("Scaling App Dynos")
-      //l.info(http(cli.dynos(n, HerokuClient.requireApp(remote)) as_str))
+      val app = requireApp(remote)
+      l.info("Scaling %s %s processes" format(app, typ))
+      val req = cli.ps(app).scale(typ, n)(as.String)
+      l.info(req())
     }
 
   private def addonsTask(l: Logger, remote: String) =
     client { cli =>
       val app = requireApp(remote)
+      
       val req = cli.addons.installed(app)(as.lift.Json)
       val addons = for {
         JArray(ax) <- req()
@@ -757,8 +778,8 @@ object Plugin extends sbt.Plugin {
       } yield (name, url, desc)
       if (addons.isEmpty) l.warn("No addons available")
       else {
-        l.info("Addons")
-        addons.foreach {
+        l.info("Addons available")
+        addons.sortBy(_._1).foreach {
           case (name, url, desc) =>
             l.info("%s (%s) - %s" format(desc, name, url))
         }
@@ -787,7 +808,7 @@ object Plugin extends sbt.Plugin {
           JField(key, JString(value)) <- fields
         } yield (key, value)
         val config = resp.toMap
-        if (config.isEmpty) l.info("empty config. add configuration with hero-config-set <key> <value>.")
+        if (config.isEmpty) l.info("Empty config. Add configuration with hero-config-set <key> <value>.")
         else printMap(resp.toMap, l)
       } catch {
         case _ => l.info("Empty config")
@@ -795,7 +816,7 @@ object Plugin extends sbt.Plugin {
     }
 
   private def createTask(l: Logger,
-                         remote: String = "heroku",
+                         remote: String = DefaultRemote,
                          name: Option[String] = None,
                          stack: Option[String] = None) =
     client { cli =>
@@ -828,7 +849,7 @@ object Plugin extends sbt.Plugin {
     else if(Prompt.Okays contains confirm) client { cli =>
       l.info("Destroying remote application")
       try {
-        l.info(cli.apps.destory(requireApp(remote))(as.String)())
+        cli.apps.destory(requireApp(remote))(as.String)()
         l.info("Remote application destroyed")
         GitClient.remoteRm(remote)
         l.info("Removed heroku git remote '%s'" format remote)
@@ -842,13 +863,13 @@ object Plugin extends sbt.Plugin {
   // todo: check for local changes...
   private def pushTask(l: Logger, remote: String) = {
     l.info("Updating application (this may take a few seconds)")
-    val stat = GitCli.push(remote) ! l
+    val stat = GitClient.push(remote, l)
     if(stat == 0) l.info("Check the status of your application with `hero:ps` or `hero:logs`")
     stat
   }
 
   private def procfileTask: Initialize[Task[File]] =
-    (state, procs, streams) map {
+    (state, procs in hero, streams) map {
       (state, procs, out) =>
         new File(rootDir(state), "Procfile") match {
           case pf if(pf.exists) => pf
@@ -861,10 +882,10 @@ object Plugin extends sbt.Plugin {
 
   /* http://devcenter.heroku.com/articles/slug-compiler
      http://devcenter.heroku.com/articles/slug-size
-   the docs say to ignore everything that isn't required to run an
-   application.  */
+     The docs say to ignore everything that isn't required to run an
+     application.  */
   private def slugIgnoreTask: Initialize[Task[File]] =
-    (state, slugIgnored, streams) map {
+    (state, slugIgnored in hero, streams) map {
       (state, ignores, out) =>
         new java.io.File(rootDir(state), ".slugignore") match {
           case si if(si.exists) => si
@@ -895,7 +916,7 @@ object Plugin extends sbt.Plugin {
 
   private def scriptTask: Initialize[Task[File]] =
     (mainClass in hero, streams, fullClasspath in Runtime, state,
-      target, scriptName, javaOptions in hero) map {
+      target, scriptName in hero, javaOptions in hero) map {
       (main, out, cp, state, target, sn, jvmOpts) => main match {
         case Some(mainCls) =>
           val scriptBody = Script(mainCls, cp.files map { f =>

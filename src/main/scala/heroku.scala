@@ -143,77 +143,32 @@ trait Methods { self: Client =>
     "beta": false,
     "configured": true
   }
-]*/
+]*/  
     def list(name: String) =
       complete(api / "apps" / name / "addons")
-
     def installed(name: String) =
       complete(api / "apps" / name / "addons")
-
-/*{
-  "status": "Installed",
-  "message": null,
-  "price": "free"
-}*/
     def install(name: String, addon: String) =
       complete(api.POST / "apps" / name / "addons" / addon)
-/*{
-  "status": "Updated",
-  "message": null,
-  "price": "$5/mo"
-}*/    
     def upgrade(name: String, addon: String) =
       complete(api.PUT / "apps" / name / "addons" / addon)
-/*{
-  "status": "Uninstalled",
-  "message": null,
-  "price": "$5/mo"
-}*/
     def uninstall(name: String, addon: String)=
       complete(api.DELETE / "apps" / name / "addons" / addon)
   }
 
   def domains(app: String) = new {
-
-/*[
-  {
-    "id": 49458,
-    "app_id": 278620,
-    "domain": "foo.exampleiii.org",
-    "base_domain": "exampleiii.org",
-    "default": null,
-    "created_at": "2011/01/01 00:00:00 -0700",
-    "updated_at": "2011/01/01 00:00:00 -0700"
-  }
-]*/
     def list = 
       complete(api / "apps" / app / "domains")
-  /*{
-  "domain": "other.example.org"
-  }*/
     def add(domain: String) =
       complete(api.POST / "apps" / app / "domains" << Map(
         "domain_name[domain]" -> domain
       ))
-    /* {} */
     def remove(domain: String) =
       complete(api.DELETE / "apps" / app / "domains" / domain)
     
   }
 
   def releases(app: String) = new {
-   /* [
-  {
-    "name": "v1",
-    "descr": "Add-on add example:addon",
-    "user": "releasing-user@example.org",
-    "commit": "0f0f0f0",
-    "env": { "FOO": "bar" },
-    "addons": [ "example:addon" ],
-    "pstable": { "web": "bin/web start" },
-    "created_at": "2011/01/01 00:00:00 -0700"
-  }
-]*/
     def list =
       complete(api / "apps" / app / "releases")
     def info(release: String) =
@@ -225,21 +180,16 @@ trait Methods { self: Client =>
   }
 
   def keys = new {
-/*[
-  {
-    "contents": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCz29znMi/UJX/nvkRSO5FFugKhU9DkkI53E0vXUnP8zeLFxMgyUqmXryPVjWtGzz2LRWqjm14SbqHAmM44pGHVfBIp6wCKBWSUYGv/FxOulwYgtWzz4moxWLZrFyWWgJAnehcVUifHNgzKwT2ovWm2ns52681Z8yFK3K8/uLStDjLIaPePEOaxaTvgIxZNsfyEoXoHcyTPwdR1GtQuDTuDYqYmjmPCoKybYnXrTQ1QFuQxDneBkswQYSl0H2aLf3uBK4F01hr+azXQuSe39eSV4I/TqzmNJlanpILT9Jz3/J1i4r6brpF3AxLnFnb9ufIbzQAIa/VZIulfrZkcBsUl david@carbon.local",
-    "email": "keyowner@example.org"
-  }
-]*/
     def list =
       complete(api / "user" / "keys")
     def add(key: String) =
-      complete(api.POST / "user" / "keys" << Map("body" -> key))
+      complete(api.POST / "user" / "keys" << key)
     def remove(userathost: String) =
       complete(api.DELETE / "user" / "keys" / userathost)
-    def removeall =
-      (api.DELETE / "user" / "keys")
+    def clear =
+      complete(api.DELETE / "user" / "keys")
   }
+
   def logs = new {
     def lines(name: String, num: Int = 20, ps: Option[String] = None) =
       complete(api / "apps" / name / "logs" << Map("logplex" -> "true"))

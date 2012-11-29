@@ -19,38 +19,37 @@ object Auth {
     }
 
   def acquireCredentials(log: sbt.Logger, tries: Int = 0): Unit = {
+    import net.liftweb.json._
     log.info("Authenticate with Heroku")
     val apikey = askDiscretely("Enter your API key (from https://dashboard.heroku.com/account): ") { _.trim }    
     if(apikey.isEmpty && tries > 2) sys.error("Failed to authenticate")
     else if(apikey.isEmpty) {
       log.warn("Empty email or password")
       acquireCredentials(log, tries + 1)
-    } else try {      
+    } else {      
       // todo: verify key
       val cli = new Client(BasicAuth(apikey))
-      println("apps %s" format cli.apps.list(as.String)())
-      sbt.IO.write(store, apikey)
-      log.info("Wrote credentials to %s" format store.getPath)
-      if (false) associateOrGenPublicKey(log, cli)
-    } catch {
-      case dispatch.StatusCode(406) =>
+      val req = cli.apps.list(as.lift.Json)
+      val err = for {
+        JField("error", JString(err)) <- req()
+      } yield err
+      if (err.isEmpty) {
+        sbt.IO.write(store, apikey)
+        log.info("Wrote credentials to %s" format store.getPath)
+        val kreq = cli.keys.list(as.lift.Json)
+        val keys = for {
+          JArray(ary) <- kreq()
+          JObject(fields) <- ary
+          JField("contents", JString(key)) <- fields
+        } yield key
+        if (keys.isEmpty) associateOrGenPublicKey(log, cli)
+      } else {
         if(tries > 2) sys.error("Failed to authenticate.")
         else {
           log.warn("Invalid credentials")
           acquireCredentials(log, tries + 1)
         }
-      case dispatch.StatusCode(404) =>
-        if(tries > 2) sys.error("Failed to authenticate.")
-        else {
-          log.warn("Invalid credentials")
-          acquireCredentials(log, tries + 1)
-        }
-      case e =>
-        if(tries > 2) sys.error("Failed to authenticate. %s" format e.getMessage)
-        else {
-          log.warn("Invalid credentials %s" format e.getMessage)
-          acquireCredentials(log, tries + 1)
-        }
+      }
     }
   }
 
@@ -73,11 +72,11 @@ object Auth {
       if(Prompt.Okays contains confirm) {
         log.info("Registering key %s" format keyFile.get)
         val http = new Http
-        client.keys.add(sbt.IO.read(keyFile.get))
+        log.info(client.keys.add(sbt.IO.read(keyFile.get))(as.String)())
         log.info("Registered key")
       } else if(Prompt.Nos contains confirm) notNow
       else {
-        log.warn("did not understand answer %s" format confirm)
+        log.warn("%s does not compute." format confirm)
         notNow
       }
     } else {
