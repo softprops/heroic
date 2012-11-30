@@ -51,8 +51,8 @@ object Plugin extends sbt.Plugin {
     val destroy = InputKey[Unit]("destroy", "Deletes remote application")
     val info = InputKey[Unit]("info", "Displays Heroku deployment info")
     val scale = InputKey[Unit]("scale", "Scale the number of processes for a given process type")
-    val addons = InputKey[Unit]("addons", "Lists installed Heroku addons")
-    val addonsAvailable = InputKey[Unit]("addons-available", "Lists available Heroku addons")
+    val addonsInstalled = InputKey[Unit]("addons-installed", "Lists installed Heroku addons")
+    val addons = InputKey[Unit]("addons", "Lists available Heroku addons")
     val addonsInstall = InputKey[Unit]("addons-install", "Install a Heroku addon by name")
     val addonsUninstall = InputKey[Unit]("addons-uninstall", "Uninstall a Heroku addon by name")
     val config = InputKey[Unit]("config", "Lists available remote Heroku config properties")
@@ -293,15 +293,15 @@ object Plugin extends sbt.Plugin {
       }
     },
 
-    addons in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    addonsInstalled in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
-        addonsTask(out.log, remoteOption(args))
+        addonsInstalledTask(out.log, remoteOption(args))
       }
     },
 
-    addonsAvailable in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
+    addons in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
-        addonsAvailableTask(out.log, remoteOption(args))
+        addonsTask(out.log, remoteOption(args))
       }
     },
 
@@ -747,10 +747,9 @@ object Plugin extends sbt.Plugin {
       l.info(req())
     }
 
-  private def addonsTask(l: Logger, remote: String) =
+  private def addonsInstalledTask(l: Logger, remote: String) =
     client { cli =>
-      val app = requireApp(remote)
-      
+      val app = requireApp(remote)      
       val req = cli.addons.installed(app)(as.lift.Json)
       val addons = for {
         JArray(ax) <- req()
@@ -763,14 +762,14 @@ object Plugin extends sbt.Plugin {
         l.warn("No addons installed for %s. Install with hero-addon-install <name>" format app)
       } else {
         l.info("Addons installed")
-        addons.foreach {
+        addons.sortBy(_._1).foreach {
           case (name, url, desc) =>
             l.info("%s (%s)" format(desc, name))
         }
       }
     }
 
-  private def addonsAvailableTask(l: Logger, remote: String) =
+  private def addonsTask(l: Logger, remote: String) =
     client { cli =>
       val req = cli.addons.list(as.lift.Json)
       val addons = for {
