@@ -301,7 +301,7 @@ object Plugin extends sbt.Plugin {
 
     addons in hero <<= inputTask { (argsTask: TaskKey[Seq[String]]) =>
       (argsTask, streams) map { (args, out) =>
-        addonsTask(out.log, remoteOption(args))
+        addonsTask(out.log)
       }
     },
 
@@ -769,7 +769,7 @@ object Plugin extends sbt.Plugin {
       }
     }
 
-  private def addonsTask(l: Logger, remote: String) =
+  private def addonsTask(l: Logger) =
     client { cli =>
       val req = cli.addons.list(as.lift.Json)
       val addons = for {
