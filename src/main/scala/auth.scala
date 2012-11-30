@@ -27,7 +27,6 @@ object Auth {
       log.warn("Empty email or password")
       acquireCredentials(log, tries + 1)
     } else {      
-      // todo: verify key
       val cli = new Client(BasicAuth(apikey))
       val req = cli.apps.list(as.lift.Json)
       val err = for {
@@ -38,8 +37,8 @@ object Auth {
         log.info("Wrote credentials to %s" format store.getPath)
         val kreq = cli.keys.list(as.lift.Json)
         val keys = for {
-          JArray(ary) <- kreq()
-          JObject(fields) <- ary
+          JArray(ary)                      <- kreq()
+          JObject(fields)                  <- ary
           JField("contents", JString(key)) <- fields
         } yield key
         if (keys.isEmpty) associateOrGenPublicKey(log, cli)
@@ -87,5 +86,5 @@ object Auth {
     }
   }
 
-  def store = new File(System.getProperty("user.home"), ".heroku/credentials")
+  def store = new File(System.getProperty("user.home"), ".heroic/credentials")
 }

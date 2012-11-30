@@ -172,7 +172,7 @@ trait Methods { self: Client =>
     def list =
       complete(api / "apps" / app / "releases")
     def info(release: String) =
-      complete(api / "apps" / app / "release" / release)
+      complete(api / "apps" / app  / "releases" / release)
     def rollback(release: String) =
       complete(api.POST / "apps"/ app / "releases" << Map(
         "rollback" -> release
